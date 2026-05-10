@@ -96,7 +96,7 @@ const DashboardLayout = () => {
                                     background: 'linear-gradient(90deg, #fff, #bbb)',
                                     WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
                                 }}>
-                                    EmergentAI
+                                    Restruct Warp
                                 </div>
                                 <div className="logo-sub" style={{
                                     fontSize: '10px', fontWeight: 500, color: 'var(--p2)',

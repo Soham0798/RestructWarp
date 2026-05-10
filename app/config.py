@@ -9,6 +9,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     JWT_SECRET: str
     GROQ_API_KEY: str
-    ANTHROPIC_API_KEY: str = ""   # optional – required for Claude features
+    GEMINI_API_KEY: str = ""    # required for frontend tasks
 
 settings = Settings()

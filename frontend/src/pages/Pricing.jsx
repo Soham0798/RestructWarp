@@ -72,7 +72,7 @@ const FAQS = [
     { q: 'What counts as a "generation"?', a: 'Each successful AI output (website, backend project, or full-stack app) counts as one generation.' },
     { q: 'Which AI models are used?', a: 'Starter uses Groq (Llama 3). Pro and Enterprise unlock Claude Opus for higher-quality streaming generation.' },
     { q: 'Do you offer a free trial?', a: 'The Starter plan is permanently free with 50 generations/month — no credit card required.' },
-    { q: 'Is there an API?', a: 'Pro and Enterprise plans include REST API access so you can integrate EmergentAI into your own workflows.' },
+    { q: 'Is there an API?', a: 'Pro and Enterprise plans include REST API access so you can integrate Restruct Warp into your own workflows.' },
 ];
 
 const Pricing = () => {

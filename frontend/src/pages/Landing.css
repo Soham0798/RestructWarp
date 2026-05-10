@@ -173,7 +173,7 @@
 .landing-root .title {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: clamp(24px, 11vw, 120px);
+  font-size: clamp(20px, 7.5vw, 100px);
   letter-spacing: min(-2px, -0.5vw);
   line-height: 1;
   color: #ffffff;

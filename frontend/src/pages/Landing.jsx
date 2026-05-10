@@ -156,8 +156,8 @@ const Landing = () => {
             <div className="cursor-ring-outer" id="ringOuter" ref={roRef}></div>
 
             <div className="stage">
-                <h1 className="title" id="title" data-text="EMERGENT AI" ref={titleRef}>
-                    EMERGENT <span className="ai">AI</span>
+                <h1 className="title" id="title" data-text="RESTRUCT WARP" ref={titleRef}>
+                    RESTRUCT <span className="ai">WARP</span>
                 </h1>
                 <p className="tagline">Intelligence · Emerging · Now</p>
             </div>

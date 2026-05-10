@@ -4,7 +4,7 @@ from app.database import engine, Base
 from app.routers import auth, generate, dashboard, admin
 from app.middleware.logger import log_requests
 
-app = FastAPI(title="BobTheBuilderAI")
+app = FastAPI(title="Restruct Warp")
 
 app.middleware("http")(log_requests)
 

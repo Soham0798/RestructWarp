@@ -342,7 +342,7 @@ p {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -678,40 +678,40 @@ body.custom-cursor-active *::after {
   cursor: none !important;
 }
 
-.gen-cursor-dot {
+body.custom-cursor-active .gen-cursor-dot {
   position: fixed;
   width: 7px;
   height: 7px;
   background: #c77dff;
   border-radius: 50%;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 999999;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 10px #c77dff, 0 0 28px #9b5de5;
   will-change: left, top;
 }
 
-.gen-cursor-ring {
+body.custom-cursor-active .gen-cursor-ring {
   position: fixed;
   width: 38px;
   height: 38px;
   border: 1px solid rgba(199, 125, 255, 0.45);
   border-radius: 50%;
   pointer-events: none;
-  z-index: 9998;
+  z-index: 999998;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 16px rgba(155, 93, 229, 0.15), inset 0 0 8px rgba(155, 93, 229, 0.06);
   will-change: left, top;
 }
 
-.gen-cursor-outer {
+body.custom-cursor-active .gen-cursor-outer {
   position: fixed;
   width: 72px;
   height: 72px;
   border: 1px solid rgba(155, 93, 229, 0.12);
   border-radius: 50%;
   pointer-events: none;
-  z-index: 9997;
+  z-index: 999997;
   transform: translate(-50%, -50%);
   will-change: left, top;
 }
@@ -763,6 +763,7 @@ body.custom-cursor-active *::after {
   color: var(--muted);
   transition: all 0.2s;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .topbar-pill:hover {
@@ -850,6 +851,7 @@ body.custom-cursor-active *::after {
   border-right: 1px solid var(--border);
   position: relative;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .mode-tab:last-child {
@@ -995,6 +997,7 @@ body.custom-cursor-active *::after {
   transition: all 0.25s;
   letter-spacing: 0.3px;
   box-shadow: 0 4px 20px rgba(149, 76, 255, 0.3);
+  cursor: pointer;
 }
 
 .generate-btn:hover {
@@ -1044,6 +1047,7 @@ body.custom-cursor-active *::after {
   font-family: 'Syne', sans-serif;
   transition: all 0.2s;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .builder-chip:hover {
@@ -1166,7 +1170,7 @@ body.custom-cursor-active *::after {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 

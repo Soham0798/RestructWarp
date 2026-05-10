@@ -10,13 +10,13 @@ from app.models.user import User
 from app.models.generation import Generation
 from app.security.jwt_handler import verify_token
 from app.schemas.generate_schema import GenerateSchema
-from app.services.grok_service import (
+from app.services.groq_service import (
     generate_text, generate_website, refine_website,
     generate_backend_code, generate_fullstack, extract_code_block
 )
-from app.services.claude_service import (
-    stream_website_claude, stream_refine_claude,
-    stream_fullstack_frontend_claude, is_claude_configured
+from app.services.gemini_service import (
+    stream_website_gemini, stream_refine_gemini,
+    stream_fullstack_frontend_gemini, is_gemini_configured
 )
 from app.services.credit_service import deduct_credit
 
@@ -62,7 +62,7 @@ async def generate_stream(
         try:
             if data.type == "website":
                 # True token-by-token streaming for websites
-                async for token in stream_website_claude(data.prompt):
+                async for token in stream_website_gemini(data.prompt):
                     chunks.append(token)
                     yield f"data: {json.dumps({'chunk': token})}\n\n"
 
@@ -73,14 +73,14 @@ async def generate_stream(
                 # Start Groq backend generation as a background task
                 backend_task = asyncio.create_task(generate_backend_code(data.prompt))
 
-                # Stream Claude frontend tokens in real-time
+                # Stream Gemini frontend tokens in real-time
                 frontend_html = []
-                async for token in stream_fullstack_frontend_claude(data.prompt):
+                async for token in stream_fullstack_frontend_gemini(data.prompt):
                     frontend_html.append(token)
                     chunks.append(token)
                     yield f"data: {json.dumps({'chunk': token})}\n\n"
 
-                # Claude done — send the preview HTML as a separate event
+                # Gemini done — send the preview HTML as a separate event
                 preview_html = "".join(frontend_html)
                 yield f"data: {json.dumps({'preview': preview_html})}\n\n"
 
@@ -180,7 +180,7 @@ async def refine_stream(
 
     async def event_stream():
         try:
-            async for token in stream_refine_claude(data.current_code, data.prompt):
+            async for token in stream_refine_gemini(data.current_code, data.prompt):
                 chunks.append(token)
                 yield f"data: {json.dumps({'chunk': token})}\n\n"
         except Exception as e:
@@ -228,30 +228,26 @@ async def refine_stream(
 @router.get("/status")
 async def generation_status():
     """
-    Returns:
-      engine: 'claude'         – Claude key valid + has credits
-              'groq-fallback'  – Claude key set but no credits (Groq used)
-              'groq'           – No Claude key configured at all
+    Returns the status of the AI generation engines.
+    Frontend: Gemini (Primary)
+    Backend: Groq (Exclusive)
     """
-    if not is_claude_configured():
-        return {"engine": "groq", "claude_available": False, "streaming": True}
+    gemini_ok = is_gemini_configured()
 
-    # Quick probe – try streaming 1 token from Claude
-    try:
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        async with client.messages.stream(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=5,
-            messages=[{"role": "user", "content": "ping"}]
-        ) as s:
-            await s.get_final_text()
-        return {"engine": "claude", "claude_available": True, "streaming": True}
-    except Exception as e:
-        err = str(e).lower()
-        if "credit" in err or "billing" in err or "balance" in err:
-            return {"engine": "groq-fallback", "claude_available": False, "streaming": True}
-        return {"engine": "groq-fallback", "claude_available": False, "streaming": True}
+    if not gemini_ok:
+        return {
+            "engine": "none",
+            "gemini_available": False,
+            "groq_available": True, # Always available for backend
+            "streaming": True
+        }
+
+    return {
+        "engine": "gemini",
+        "gemini_available": True,
+        "groq_available": True,
+        "streaming": True
+    }
 
 
 # ─── POST /generate/refine  (legacy non-streaming refine) ────────────────────
@@ -270,14 +266,21 @@ async def refine(
         result = await db.execute(select(User).where(User.id == payload["user_id"]))
         user = result.scalar_one()
 
-        output, response_time = await refine_website(data.current_code, data.prompt)
+        # Use streaming service and collect chunks for legacy support
+        chunks = []
+        start_time_ts = time.time()
+        async for chunk in stream_refine_gemini(data.current_code, data.prompt):
+            chunks.append(chunk)
+        
+        output = "".join(chunks)
+        response_time = int((time.time() - start_time_ts) * 1000)
 
         await deduct_credit(db, user)
 
         gen = Generation(
             user_id=user.id,
             prompt=f"Refine: {data.prompt}",
-            output=output,
+            output=extract_code_block(output),
             type="website",
             response_time=response_time,
         )
@@ -303,17 +306,45 @@ async def generate(
         user = result.scalar_one()
 
         if data.type == "website":
-            output, response_time = await generate_website(data.prompt)
+            # Use Gemini for website
+            chunks = []
+            st = time.time()
+            async for chunk in stream_website_gemini(data.prompt):
+                chunks.append(chunk)
+            output = "".join(chunks)
+            response_time = int((time.time() - st) * 1000)
+            db_output = extract_code_block(output)
         elif data.type == "backend":
+            # Use Groq for backend
             output, response_time = await generate_backend_code(data.prompt)
+            db_output = output if isinstance(output, str) else json.dumps(output)
         elif data.type == "fullstack":
-            output, response_time = await generate_fullstack(data.prompt)
+            # Use Gemini for frontend and Groq for backend
+            import asyncio
+            st = time.time()
+            
+            async def get_frontend():
+                chunks = []
+                async for chunk in stream_fullstack_frontend_gemini(data.prompt):
+                    chunks.append(chunk)
+                return "".join(chunks)
+
+            frontend_task = asyncio.create_task(get_frontend())
+            backend_task = asyncio.create_task(generate_backend_code(data.prompt))
+            
+            frontend_html, (backend_code, _) = await asyncio.gather(frontend_task, backend_task)
+            
+            output = {
+                "frontend": {"preview": frontend_html, "files": {}}, # Legacy structure
+                "backend": backend_code
+            }
+            response_time = int((time.time() - st) * 1000)
+            db_output = json.dumps(output)
         else:
             output, response_time = await generate_text(data.prompt)
+            db_output = output if isinstance(output, str) else json.dumps(output)
 
         await deduct_credit(db, user)
-
-        db_output = output if isinstance(output, str) else json.dumps(output)
 
         gen = Generation(
             user_id=user.id,

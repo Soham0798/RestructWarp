@@ -1,6 +1,6 @@
-# EmergentAI Frontend
+# Restruct Warp Frontend
 
-This is the frontend for the EmergentAI Website Generator, built with React and Vite.
+This is the frontend for the Restruct Warp Website Generator, built with React and Vite.
 
 ## Theme: iOS 26
 The design follows a futuristic "iOS 26" aesthetic with:

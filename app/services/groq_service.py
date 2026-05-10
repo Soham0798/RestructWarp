@@ -1,3 +1,8 @@
+"""
+groq_service.py
+Primary provider for BACKEND generation tasks (FastAPI, Python, etc.).
+This service should NOT be used for frontend generation anymore (moved to Claude/DeepSeek).
+"""
 import time
 import asyncio
 from functools import partial
@@ -45,8 +50,8 @@ async def _async_call(model: str, messages: list, temperature: float = 0.7,
         return await loop.run_in_executor(None, fn)
     except Exception as e:
         err_msg = str(e).lower()
-        if "403" in err_msg or "permission" in err_msg or "credit" in err_msg:
-            print(f"[MOCK FALLBACK] Caught Grok Quota Error. Returning dummy data. Error: {e}")
+        if "403" in err_msg or "permission" in err_msg or "credit" in err_msg or "rate_limit" in err_msg:
+            print(f"[MOCK FALLBACK] Caught Groq Error (Quota/Rate Limit). Returning dummy data. Error: {e}")
             if response_format and response_format.get("type") == "json_object":
                 # Mock a backend project payload
                 return '''{"requirements.txt": "fastapi==0.104.1", "app/main.py": "from fastapi import FastAPI\\napp = FastAPI()\\n\\n@app.get('/')\\ndef root():\\n    return {'hello': 'world'}"}'''
@@ -61,7 +66,7 @@ async def _async_call(model: str, messages: list, temperature: float = 0.7,
 <body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
     <div class="text-center p-10 bg-gray-800 rounded-lg shadow-xl">
         <h1 class="text-4xl font-bold mb-4">API Billing Empty ⚠️</h1>
-        <p class="text-gray-400">This is a mock response because the original X.AI API Key requires credits.</p>
+        <p class="text-gray-400">This is a mock response because the Groq API requires credits or has reached its rate limit.</p>
         <p class="mt-4 text-sm text-gray-500">Your backend requested this page through a fallback handler!</p>
     </div>
 </body>
@@ -90,45 +95,42 @@ async def generate_website(prompt: str):
     system_prompt = """You are a World-Class Senior Frontend Engineer and UI/UX Designer.
 Your goal is to build an "Awwwards-Winning" landing page that looks expensive, premium, and trustworthy.
 
-### 1. DESIGN SYSTEM (Tailwind CSS)
-- **Typography**: `font-sans` (Inter/Plus Jakarta Sans).
-- **Colors**: Use a refined palette.
-  - Primary: `indigo-600` to `violet-600` (gradients).
-  - Background: `slate-900` (Dark Mode) or `slate-50` (Light Mode).
-  - Text: `slate-100` or `slate-900`.
-- **Effects**:
-  - Glassmorphism: `bg-white/10 backdrop-blur-lg border border-white/20`.
-  - Shadows: `shadow-2xl shadow-indigo-500/20`.
-  - Gradients: `bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500`.
+### 1. CRITICAL CSS INSTRUCTION
+Rewrite the entire app as a single self-contained HTML file with ALL CSS written inside a <style> tag in the <head> — no external stylesheets, no CDN links, no separate .css files, no Tailwind or any framework that requires a build step.
+Every single style must be written in raw vanilla CSS inside that one <style> block. Verify that every element — every div, section, nav, button, card, icon, input, and container — has explicit CSS rules covering: background-color, color, font-family, padding, margin, display, width, height, border-radius, and position where applicable.
+The final output must open perfectly in any browser with zero internet connection and render as a fully styled, visually polished UI.
 
-### 2. COMPOSITION (Sections)
+### 2. DESIGN SYSTEM (Vanilla CSS)
+- **Typography**: system-ui, -apple-system, BlinkMacSystemFont, sans-serif.
+- **Colors**: Use a refined palette.
+  - Primary: indigo to violet (gradients).
+  - Background: dark slate.
+  - Text: light slate.
+- **Effects**:
+  - Glassmorphism: backdrop-filter: blur, rgba backgrounds and borders.
+  - Shadows: deep colorful box-shadows.
+  - Gradients: linear-gradients for buttons and text.
+
+### 3. COMPOSITION (Sections)
 You MUST include these sections in order:
-1. **Navbar**: Sticky, glassmorphism, Logo (text is fine), Navigation Links, CTA Button.
-2. **Hero Section**: Huge headline, subheadline, 2 buttons (Primary/Secondary), and a **Large AI Hero Image**.
-3. **Logos Cloud**: "Trusted by" section with opacity-50 logos (use FontAwesome icons as fake logos).
+1. **Navbar**: Sticky, glassmorphism, Logo, Navigation Links, CTA Button.
+2. **Hero Section**: Huge headline, subheadline, 2 buttons (Primary/Secondary).
+3. **Logos Cloud**: "Trusted by" section (use emojis or pure CSS shapes).
 4. **Features Grid**: Bento-grid style or 3-column layout. Cards with icons and descriptions.
 5. **How It Works**: Step-by-step process with connecting lines or numbers.
 6. **Testimonials**: Masonry layout or grid of glowing reviews.
 7. **Pricing**: 3 Cards (Basic, Pro, Enterprise). Highlight "Pro".
 8. **FAQ**: Accordion style (using `<details>` and `<summary>` for simplicity).
-9. **Footer**: Links, Newsletter input, Social icons.
-
-### 3. CRITICAL: IMAGES (Pexels API)
-For every image need, make an API call to:
-`https://api.pexels.com/v1/search?query=[KEYWORD]&per_page=1`
-Include header: `Authorization: Ny80qejcYhDrWQUXs6THwjH9sg8IQ0JmTft08ZJfxn61yvx3NsZgxUnA`
-Then, parse the JSON response, extract the URL from `photos[0].src.medium`, and use it as the `src` or `background-image`.
-- **Descriptions**: MUST be specific to the user's prompt (e.g., "chef cooking" for food app).
+9. **Footer**: Links, Newsletter input.
 
 ### 4. INTERACTIVITY
-- **Hover**: `hover:-translate-y-2 hover:shadow-xl transition-all duration-300`.
-- **Animations**: Add `group` classes for hover effects.
+- **Hover**: Add CSS hover states with `transform: translateY(-5px)`, shadow changes, and `transition: all 0.3s ease`.
 
 ### OUTPUT FORMAT
 - Return ONLY valid HTML5 code.
-- Include `<script src="https://cdn.tailwindcss.com"></script>`.
-- Include `<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">`.
-- Include Google Fonts link.
+- Do NOT include Tailwind.
+- Do NOT include FontAwesome or external Google Fonts.
+- Place ALL styling within `<style>` in the `<head>`.
 """
 
     content = await _async_call(
@@ -269,11 +271,19 @@ async def generate_fullstack(prompt: str):
 async def refine_website(current_code: str, prompt: str):
     start = time.time()
 
-    system_prompt = """You are an expert AI Web Developer.
-Edit the provided HTML based on the request.
-Maintain Tailwind CSS and Pollinations.ai images.
-Return ONLY raw HTML.
-"""
+    system_prompt = """You are an expert AI Web Developer. Edit the provided HTML based on the user's request.
+The app is rendering but looks visually broken and unpolished. Fix all of the following issues without changing the core design, color scheme, or layout structure:
+
+Placeholder text showing inside visual containers — Any element that is meant to display a visual (image, avatar, thumbnail, cover, icon, illustration) must never show raw text like "Image", "Photo", "Thumbnail", "Avatar", "Icon" etc. inside it. Remove all such text. Replace every visual container with a styled CSS block using a linear-gradient, a background color, or an inline SVG icon. The container must have explicit width, height, border-radius, and display: block so it renders as a visible styled shape.
+Broken flex layouts in cards and list rows — Every card, row, or list item that contains a visual on the left and text on the right must use display: flex; align-items: center; gap: 12px. Nothing inside a card should stack vertically unless it is explicitly meant to. Text must never wrap awkwardly or overflow its container. Add white-space: nowrap; overflow: hidden; text-overflow: ellipsis to all single-line text labels.
+Fixed bars are incomplete — Any fixed header, bottom bar, or footer must be divided into three sections (left, center, right) using display: flex; justify-content: space-between; align-items: center. Each section must contain all its intended elements — labels, buttons, sliders, icons. Nothing should be missing, collapsed, or invisible.
+Section labels are too large or wrapping — Any label that is meant to be a small uppercase category title must be styled as: font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap. It must never wrap onto multiple lines or appear at heading size.
+Visual containers are wrong aspect ratio — Any container meant to be square (thumbnail, avatar, card cover) must use either matching width and height values or aspect-ratio: 1 / 1. No visual block should appear as a tall rectangle, flat strip, or collapsed zero-height element.
+Spacing is cramped or inconsistent — Add gap: 16px to every flex and grid container. Add padding: 24px to the main scrollable content area. Every section heading needs margin-bottom: 16px. No two elements should be touching without at least 8px of space between them.
+Empty or invisible sections — If a section of the layout appears completely empty or blank, it means a child element failed to render. Add a visible placeholder using a gradient block, a simple icon, or dummy text so no section of the UI appears broken or forgotten.
+
+Output one single self-contained HTML file. All CSS must be inside a <style> tag in the <head>. No external files, no CDN links, no frameworks requiring a build step.
+Return ONLY the complete updated raw HTML. No markdown, no explanation."""
 
     user_message = f"""
 HTML:

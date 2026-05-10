@@ -9,7 +9,7 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 try:
     print("Testing DeepSeek on Groq...")
     completion = client.chat.completions.create(
-        model="deepseek-r1-distill-llama-70b",
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": "Hello"}],
         max_tokens=10
     )

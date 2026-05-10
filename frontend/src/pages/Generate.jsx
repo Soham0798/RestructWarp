@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Globe, Layers, Server, Sparkles, Send, RefreshCw, Eye, Code2,
     Loader2, ChevronRight, Copy, Check, X, Zap, Activity, FileCode,
@@ -129,6 +130,33 @@ function stripHtmlPreamble(raw) {
     const closingHtmlIndex = cleaned.toLowerCase().lastIndexOf('</html>');
     if (closingHtmlIndex !== -1) {
         cleaned = cleaned.substring(0, closingHtmlIndex + 7);
+    }
+
+    // 7. Detect incomplete generation and inject warning
+    const isComplete = cleaned.toLowerCase().includes('</html>') || cleaned.toLowerCase().includes('</body>');
+    const hasStyle = cleaned.toLowerCase().includes('<style');
+    const isStyleComplete = !hasStyle || cleaned.toLowerCase().includes('</style>');
+    
+    // If it's a very short string that isn't HTML, don't treat it as a document
+    if (cleaned.length > 100 && (!isComplete || !isStyleComplete)) {
+        const warning = `
+            <div style="position:fixed; bottom:0; left:0; width:100%; background:#ef4444; color:white; padding:12px; z-index:99999; text-align:center; font-family:sans-serif; font-size:14px; font-weight:bold; box-shadow:0 -4px 10px rgba(0,0,0,0.3);">
+                ⚠️ Warning: AI generation stopped prematurely. Output was truncated.
+            </div>
+        `;
+        
+        // Auto-close tags to prevent blank screens (e.g. if cut off inside <style>)
+        if (hasStyle && !isStyleComplete) {
+            cleaned += '\\n</style>';
+        }
+        if (!cleaned.toLowerCase().includes('</body>')) cleaned += '\\n</body>';
+        if (!cleaned.toLowerCase().includes('</html>')) cleaned += '\\n</html>';
+
+        if (cleaned.toLowerCase().includes('<body')) {
+            cleaned = cleaned.replace(/(<body[^>]*>)/i, '$1' + warning);
+        } else {
+            cleaned = warning + cleaned;
+        }
     }
 
     return cleaned;
@@ -287,6 +315,73 @@ function StreamingView({ buffer, isStreaming, type }) {
     );
 }
 
+// ─── Preview Iframe ─────────────────────────────────────────────────────────
+
+function PreviewIframe({ html, previewKey }) {
+    const iframeRef = useRef(null);
+
+    useEffect(() => {
+        const iframe = iframeRef.current;
+        if (!iframe || !html) return;
+
+        // Add error logging script
+        const errorScript = `
+            <script>
+                window.onerror = function(msg, url, line) {
+                    console.error("Preview Error:", msg, url, line);
+                    const errDiv = document.createElement('div');
+                    errDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:rgba(220,38,38,0.9);color:white;padding:12px;z-index:99999;font-family:sans-serif;font-size:14px;box-shadow:0 4px 6px rgba(0,0,0,0.3);';
+                    errDiv.innerHTML = '<strong>Preview Error:</strong> ' + msg + ' (Line: ' + line + ')<br/><span style="font-size:11px;opacity:0.8;">Check browser console for more details.</span>';
+                    
+                    const closeBtn = document.createElement('button');
+                    closeBtn.innerHTML = '✕';
+                    closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;background:none;border:none;color:white;cursor:pointer;font-size:16px;';
+                    closeBtn.onclick = () => errDiv.remove();
+                    
+                    errDiv.appendChild(closeBtn);
+                    document.body.appendChild(errDiv);
+                };
+                
+                // Polyfill for React/Babel errors that are logged but don't trigger window.onerror
+                const originalConsoleError = console.error;
+                console.error = function() {
+                    const args = Array.from(arguments);
+                    originalConsoleError.apply(console, args);
+                    if (args[0] && typeof args[0] === 'string' && (args[0].includes('React') || args[0].includes('Babel') || args[0].includes('SyntaxError'))) {
+                        window.onerror(args.join(' '), window.location.href, 'Unknown');
+                    }
+                };
+            </script>
+        `;
+
+        let finalHtml = html;
+        // Inject error script right after <head> or at the beginning
+        if (finalHtml.includes('<head>')) {
+            finalHtml = finalHtml.replace('<head>', '<head>' + errorScript);
+        } else if (finalHtml.includes('<html>')) {
+            finalHtml = finalHtml.replace('<html>', '<html>' + errorScript);
+        } else {
+            finalHtml = errorScript + finalHtml;
+        }
+
+        const doc = iframe.contentWindow?.document || iframe.contentDocument;
+        if (doc) {
+            doc.open();
+            doc.write(finalHtml);
+            doc.close();
+        }
+    }, [html, previewKey]);
+
+    return (
+        <iframe
+            ref={iframeRef}
+            title="Live Preview"
+            style={{ width: '100%', height: '100%', border: 'none', background: '#0d1117' }}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
+        />
+    );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const Generate = () => {
@@ -338,6 +433,39 @@ const Generate = () => {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
+
+    // Lock body scroll when fullscreen is active
+    useEffect(() => {
+        if (fullscreen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => { document.body.style.overflow = ''; };
+    }, [fullscreen]);
+
+    // Resize state for output panel
+    const [panelHeight, setPanelHeight] = useState(500);
+    const resizingRef = useRef(false);
+
+    const handleResizeMouseDown = useCallback((e) => {
+        e.preventDefault();
+        resizingRef.current = true;
+        const startY = e.clientY;
+        const startH = panelHeight;
+        const onMove = (ev) => {
+            if (!resizingRef.current) return;
+            const delta = ev.clientY - startY;
+            setPanelHeight(Math.max(300, startH + delta));
+        };
+        const onUp = () => {
+            resizingRef.current = false;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, [panelHeight]);
 
     const parsed = output ? parseOutput(output, type) : null;
     const hasOutput = !!output;
@@ -659,23 +787,41 @@ const Generate = () => {
                 )}
 
                 {/* ── Bottom: Output panel ──────────────────────────────────────────── */}
-                {(isStreaming || hasOutput) && (
-                    <div className="animate-fade-up" style={{
-                        flex: 1, display: 'flex', flexDirection: 'column', minHeight: '500px',
-                        marginTop: '20px',
-                        background: 'var(--bg2)', border: '1px solid var(--border)',
-                        borderRadius: fullscreen ? '0' : '16px', overflow: 'hidden',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                {(isStreaming || hasOutput) && (() => {
+                    const panelContent = (
+                    <div style={{
+                        display: 'flex', flexDirection: 'column',
                         ...(fullscreen ? {
-                            position: 'fixed', inset: 0, zIndex: 1000,
-                            borderRadius: 0, margin: 0
-                        } : {})
+                            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999,
+                            background: 'var(--bg)', borderRadius: 0, margin: 0,
+                        } : {
+                            flex: 1, minHeight: `${panelHeight}px`, height: `${panelHeight}px`,
+                            marginTop: '20px', borderRadius: '16px',
+                            background: 'var(--bg2)', border: '1px solid var(--border)',
+                            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                        }),
+                        overflow: 'hidden',
                     }}>
+                        {/* Resize handle (top edge, non-fullscreen only) */}
+                        {!fullscreen && (
+                            <div onMouseDown={handleResizeMouseDown} style={{
+                                height: '6px', cursor: 'ns-resize', flexShrink: 0,
+                                background: 'transparent', position: 'relative', zIndex: 5,
+                            }}>
+                                <div style={{
+                                    position: 'absolute', left: '50%', top: '2px', transform: 'translateX(-50%)',
+                                    width: '40px', height: '3px', borderRadius: '2px',
+                                    background: 'rgba(255,255,255,0.12)',
+                                }} />
+                            </div>
+                        )}
                         {/* Tab bar */}
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: '2px',
                             borderBottom: '1px solid var(--glass-border)', padding: '6px 10px 0',
-                            flexShrink: 0, overflowX: 'auto'
+                            flexShrink: 0, overflowX: 'auto',
+                            background: fullscreen ? 'var(--bg)' : 'var(--bg2)',
+                            zIndex: 10,
                         }}>
                             {TABS.map(tab => {
                                 const Icon = tab.icon;
@@ -689,7 +835,7 @@ const Generate = () => {
                                         color: active ? '#a5b4fc' : 'var(--text-muted)',
                                         fontSize: '0.8rem', fontWeight: active ? 600 : 400,
                                         fontFamily: 'var(--font-main)', transition: 'var(--transition)',
-                                        whiteSpace: 'nowrap'
+                                        whiteSpace: 'nowrap', cursor: 'pointer'
                                     }}>
                                         <Icon size={13} />
                                         {tab.label}
@@ -706,7 +852,7 @@ const Generate = () => {
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', paddingBottom: '6px', alignItems: 'center' }}>
                                 {hasOutput && (
                                     <button type="button" onClick={handleGenerate} disabled={isStreaming} className="btn-secondary"
-                                        style={{ padding: '5px 12px', fontSize: '0.75rem', gap: '5px' }}>
+                                        style={{ padding: '5px 12px', fontSize: '0.75rem', gap: '5px', cursor: 'pointer' }}>
                                         <RefreshCw size={12} /> Regenerate
                                     </button>
                                 )}
@@ -718,7 +864,7 @@ const Generate = () => {
                                         background: 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)',
                                         borderRadius: '7px', padding: '5px 7px',
                                         color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                                        transition: 'all 0.2s'
+                                        transition: 'all 0.2s', cursor: 'pointer'
                                     }}
                                     onMouseEnter={e => { e.currentTarget.style.color = '#a5b4fc'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; }}
                                     onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--glass-border)'; }}
@@ -750,14 +896,7 @@ const Generate = () => {
                                             <p style={{ fontSize: '0.75rem', opacity: 0.6 }}>Preview will appear when streaming is complete</p>
                                         </div>
                                     ) : (
-                                        <iframe
-                                            ref={iframeRef}
-                                            key={previewKey}
-                                            srcDoc={stripHtmlPreamble(previewHtml || parsed.html)}
-                                            title="Live Preview"
-                                            style={{ width: '100%', height: '100%', border: 'none', background: '#0d1117' }}
-                                            sandbox="allow-scripts allow-same-origin allow-popups"
-                                        />
+                                        <PreviewIframe html={stripHtmlPreamble(previewHtml || parsed.html)} previewKey={previewKey} />
                                     )}
                                 </div>
                             )}
@@ -933,7 +1072,9 @@ const Generate = () => {
                             )}
                         </div>
                     </div>
-                )}
+                    );
+                    return fullscreen ? createPortal(panelContent, document.body) : panelContent;
+                })()}
             </div>
         </div>
     );

@@ -116,7 +116,7 @@ const Auth = () => {
                     }}>
                         <Bot size={24} color="white" />
                     </div>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 700 }} className="gradient-text">EmergentAI</span>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 700 }} className="gradient-text">Restruct Warp</span>
                 </div>
 
                 {/* Hero text */}
@@ -126,7 +126,7 @@ const Auth = () => {
                         <span className="gradient-text">with a single prompt.</span>
                     </h1>
                     <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '40px' }}>
-                        EmergentAI transforms your ideas into real, deployable websites and APIs in seconds using the power of AI.
+                        Restruct Warp transforms your ideas into real, deployable websites and APIs in seconds using the power of AI.
                     </p>
 
                     {/* Features list */}
@@ -164,7 +164,7 @@ const Auth = () => {
                     <div style={{ background: 'var(--accent-gradient)', padding: '8px', borderRadius: '12px', display: 'flex' }}>
                         <Bot size={20} color="white" />
                     </div>
-                    <span className="gradient-text" style={{ fontSize: '1.1rem', fontWeight: 700 }}>EmergentAI</span>
+                    <span className="gradient-text" style={{ fontSize: '1.1rem', fontWeight: 700 }}>Restruct Warp</span>
                 </div>
 
                 <div className="animate-fade-in" style={{ width: '100%', maxWidth: '380px', margin: '0 auto' }}>
