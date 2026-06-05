@@ -93,7 +93,7 @@ async def generate_website(prompt: str):
     start = time.time()
 
     system_prompt = """You are a World-Class Senior Frontend Engineer and UI/UX Designer.
-Your goal is to build an "Awwwards-Winning" landing page that looks expensive, premium, and trustworthy.
+Your goal is to build a premium, expensive-looking, and highly polished UI that perfectly matches the user's request.
 
 ### 1. CRITICAL CSS INSTRUCTION
 Rewrite the entire app as a single self-contained HTML file with ALL CSS written inside a <style> tag in the <head> — no external stylesheets, no CDN links, no separate .css files, no Tailwind or any framework that requires a build step.
@@ -102,26 +102,12 @@ The final output must open perfectly in any browser with zero internet connectio
 
 ### 2. DESIGN SYSTEM (Vanilla CSS)
 - **Typography**: system-ui, -apple-system, BlinkMacSystemFont, sans-serif.
-- **Colors**: Use a refined palette.
-  - Primary: indigo to violet (gradients).
-  - Background: dark slate.
-  - Text: light slate.
-- **Effects**:
-  - Glassmorphism: backdrop-filter: blur, rgba backgrounds and borders.
-  - Shadows: deep colorful box-shadows.
-  - Gradients: linear-gradients for buttons and text.
+- **Colors**: Use a refined palette that fits the requested theme.
+- **Effects**: Modern UI trends like glassmorphism, deep shadows, and gradients where appropriate.
 
-### 3. COMPOSITION (Sections)
-You MUST include these sections in order:
-1. **Navbar**: Sticky, glassmorphism, Logo, Navigation Links, CTA Button.
-2. **Hero Section**: Huge headline, subheadline, 2 buttons (Primary/Secondary).
-3. **Logos Cloud**: "Trusted by" section (use emojis or pure CSS shapes).
-4. **Features Grid**: Bento-grid style or 3-column layout. Cards with icons and descriptions.
-5. **How It Works**: Step-by-step process with connecting lines or numbers.
-6. **Testimonials**: Masonry layout or grid of glowing reviews.
-7. **Pricing**: 3 Cards (Basic, Pro, Enterprise). Highlight "Pro".
-8. **FAQ**: Accordion style (using `<details>` and `<summary>` for simplicity).
-9. **Footer**: Links, Newsletter input.
+### 3. COMPOSITION (Layout)
+- Construct the layout and structure strictly based on the user's specific request.
+- Do NOT force a generic landing page layout unless requested. If the user asks for a dashboard, build a dashboard. If they ask for a media player, build a media player structure.
 
 ### 4. INTERACTIVITY
 - **Hover**: Add CSS hover states with `transform: translateY(-5px)`, shadow changes, and `transition: all 0.3s ease`.
@@ -137,7 +123,7 @@ You MUST include these sections in order:
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Build a premium, high-converting website for: {prompt}. Ensure it feels like a $50k/year startup product."}
+            {"role": "user", "content": f"Build a premium, high-quality UI for: {prompt}. Ensure it precisely matches the requested layout."}
         ],
         temperature=0.7,
         max_tokens=8192,
@@ -304,3 +290,147 @@ Request: {prompt}
 
     output = extract_code_block(content)
     return output, int((time.time() - start) * 1000)
+
+# ─── OpenAI Streaming (Fallback) ───
+
+from typing import AsyncGenerator
+from app.services.gemini_service import WEBSITE_SYSTEM, REFINE_SYSTEM, FULLSTACK_FRONTEND_SYSTEM
+
+async def _openai_stream(system: str, user: str) -> AsyncGenerator[str, None]:
+    try:
+        from openai import AsyncOpenAI
+        
+        api_key = settings.OPENAI_API_KEY
+        if not api_key:
+            raise Exception("OpenAI API key not configured in .env file (using for OpenRouter)")
+            
+        async with AsyncOpenAI(
+            api_key=api_key, 
+            base_url="https://openrouter.ai/api/v1",
+        ) as async_client:
+            # Guide the reasoning model to plan and think deeply
+            thinking_prompt = (
+                "[THINKING PROCESS REQUESTED]\n"
+                "Analyze the following request step-by-step. Use deep reasoning to plan the layout, "
+                "responsive behavior, component state management, and Tailwind styling before outputting any code. "
+                "Generate a highly complete, professional-grade interface without any placeholder text or mock omissions.\n\n"
+            )
+            full_user_prompt = thinking_prompt + user
+
+            stream = await async_client.chat.completions.create(
+                model="openai/o3-mini",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": full_user_prompt}
+                ],
+                stream=True,
+                max_completion_tokens=8192
+            )
+        
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+    except Exception as e:
+        print(f"[openai_stream] Error: {e}")
+        yield f"<!-- Error: {e} -->"
+
+async def stream_website_openai(prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = (
+        f"Build a premium, high-quality UI for: {prompt}. "
+        "Ensure it precisely matches the requested layout and functionality. Output ONLY raw HTML. No markdown code blocks."
+    )
+    async for chunk in _openai_stream(WEBSITE_SYSTEM, user_msg):
+        yield chunk
+
+async def stream_refine_openai(current_code: str, prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = f"EXISTING HTML:\n{current_code}\n\nUSER REQUEST:\n{prompt}\n\nOutput ONLY raw HTML. No markdown code blocks."
+    async for chunk in _openai_stream(REFINE_SYSTEM, user_msg):
+        yield chunk
+
+async def stream_fullstack_frontend_openai(prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = (
+        f"Build a complete, production-grade web application frontend for: {prompt}. "
+        "Make it feel extremely premium and polished. "
+        "Include realistic mock data. "
+        "IMPORTANT: Start your response IMMEDIATELY with <!DOCTYPE html>. "
+        "Do NOT include any text, planning, scratchpad, or explanation before the HTML. "
+        "You MUST include Babel Standalone script and use <script type=\"text/babel\"> for your React/JSX code. "
+        "Output ONLY the raw HTML file. No markdown code blocks."
+    )
+    preamble_done = False
+    buffer = ''
+
+    async for chunk in _openai_stream(FULLSTACK_FRONTEND_SYSTEM, user_msg):
+        if preamble_done:
+            yield chunk
+        else:
+            buffer += chunk
+            match = re.search(r'(?i)(<!doctype\s+html|<html|<!)', buffer)
+            if match:
+                preamble_done = True
+                yield buffer[match.start():]
+            elif len(buffer) > 500:
+                preamble_done = True
+                yield buffer
+
+# ─── NVIDIA NIM Streaming (Fallback 2) ───
+
+async def _nvidia_stream(system: str, user: str) -> AsyncGenerator[str, None]:
+    try:
+        from openai import AsyncOpenAI
+        
+        api_key = settings.NVIDIA_API_KEY
+        if not api_key:
+            raise Exception("NVIDIA API key not configured in .env file")
+            
+        async with AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://integrate.api.nvidia.com/v1"
+        ) as async_client:
+            stream = await async_client.chat.completions.create(
+                model="meta/llama-4-maverick-17b-128e-instruct",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user}
+                ],
+                stream=True,
+                max_tokens=4096,
+                temperature=0.7
+            )
+        
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+    except Exception as e:
+        print(f"[nvidia_stream] Error: {e}")
+        yield f"<!-- Error: {e} -->"
+
+async def stream_fullstack_frontend_nvidia(prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = (
+        f"Build a complete, production-grade web application frontend for: {prompt}. "
+        "Make it feel extremely premium and polished. "
+        "Include realistic mock data. "
+        "IMPORTANT: Start your response IMMEDIATELY with <!DOCTYPE html>. "
+        "Do NOT include any text, planning, scratchpad, or explanation before the HTML. "
+        "You MUST include Babel Standalone script and use <script type=\"text/babel\"> for your React/JSX code. "
+        "Output ONLY the raw HTML file. No markdown code blocks."
+    )
+    preamble_done = False
+    buffer = ''
+
+    async for chunk in _nvidia_stream(FULLSTACK_FRONTEND_SYSTEM, user_msg):
+        if preamble_done:
+            yield chunk
+        else:
+            buffer += chunk
+            match = re.search(r'(?i)(<!doctype\s+html|<html|<!)', buffer)
+            if match:
+                preamble_done = True
+                yield buffer[match.start():]
+            elif len(buffer) > 500:
+                preamble_done = True
+                yield buffer

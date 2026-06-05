@@ -19,7 +19,7 @@ if settings.GEMINI_API_KEY and not settings.GEMINI_API_KEY.startswith("your-"):
 # ─── Prompts ──────────────────────────────────────────────────────────────────
 
 WEBSITE_SYSTEM = """You are a World-Class Senior Frontend Engineer and UI/UX Designer.
-Build an "Awwwards-Winning" landing page that looks premium, expensive, and developer-trustworthy.
+Your goal is to build a premium, expensive-looking, and highly polished UI that perfectly matches the user's request.
 
 CRITICAL CSS INSTRUCTION:
 Rewrite the entire app as a single self-contained HTML file with ALL CSS written inside a <style> tag in the <head> — no external stylesheets, no CDN links, no separate .css files, no Tailwind or any framework that requires a build step.
@@ -28,19 +28,12 @@ The final output must be one single .html file that opens perfectly in any brows
 
 DESIGN SYSTEM (Vanilla CSS):
 - Typography: Use system fonts (system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif) to ensure offline compatibility.
-- Colors: indigo/violet gradients for primary; dark slate bg; light slate text.
-- Effects: glassmorphism (backdrop-filter: blur, rgba borders), deep shadows, gradients.
+- Colors: Use a refined color palette that fits the requested theme.
+- Effects: Modern UI trends like glassmorphism (backdrop-filter: blur, rgba borders), deep shadows, or gradients where appropriate.
 
-REQUIRED SECTIONS (in order):
-1. Sticky glassmorphism Navbar — logo, nav links, CTA button.
-2. Hero — large headline, sub-headline, two CTA buttons.
-3. "Trusted by" logos cloud (use simple text or pure CSS shapes, no external fonts).
-4. Features Bento grid (3-col) — icon (emoji or SVG) + title + description.
-5. How It Works — numbered steps with connectors.
-6. Testimonials — masonry grid with glowing cards.
-7. Pricing — 3 cards (Starter/Pro/Enterprise), Pro highlighted.
-8. FAQ — <details>/<summary> accordion.
-9. Footer — links, newsletter input, social links.
+LAYOUT INSTRUCTIONS:
+- Construct the layout and structure strictly based on the user's specific request.
+- Do NOT force a generic landing page layout unless requested. If the user asks for a dashboard, build a dashboard. If they ask for a media player, build a media player structure.
 
 INTERACTIVITY: Add CSS transitions, hover transforms (translateY, scale), and box-shadow changes.
 
@@ -83,10 +76,11 @@ APP ARCHITECTURE:
 - Multi-page SPA using React state (currentPage / setCurrentPage) for routing
 - Sidebar or top navbar with navigation links
 - CRITICAL: For navigation links, use <button> OR if using <a href="#">, you MUST call e.preventDefault() in the onClick handler. Otherwise the host platform will reload!
-- At minimum these pages/sections: Dashboard, main feature view, settings or profile, data list
+- Build the pages and components necessary for the user's requested application.
 - Use React.useState, React.useEffect, React.useCallback, React.useMemo (destructure from React)
-- Fetch data from http://localhost:8000/api/* with fallback to realistic hardcoded mock data if fetch fails
-- Show loading spinners during fetch
+- CRITICAL: Do NOT use `fetch()` or `axios` to make real HTTP requests to the backend (e.g., no calls to http://localhost:8000). The backend is not yet active.
+- Instead, you MUST perfectly simulate API interactions by creating async functions that return realistic hardcoded mock data after a short `setTimeout` delay.
+- Show loading spinners during these simulated API fetches.
 
 DESIGN REQUIREMENTS (premium dark app):
 - Background: #0a0c12 (near-black), card backgrounds: #0d1117 or #111827
@@ -98,7 +92,7 @@ DESIGN REQUIREMENTS (premium dark app):
 - Rich data tables or card grids with badges, status pills, avatars
 - Charts or stats panels using pure CSS/HTML (no chart library needed)
 
-LAYOUT: Fixed sidebar (260px) + main content area with top header + scrollable content
+LAYOUT: Structure the layout exactly as needed for the user's requested application.
 
 CRITICAL DESIGN RULE — DARK MODE ONLY:
 - You MUST ALWAYS generate your app in DARK MODE. No exceptions.
@@ -116,6 +110,7 @@ CRITICAL OUTPUT RULES:
 - Do NOT add comments explaining what you are doing.
 - ONLY output the raw, valid HTML5 document from <!DOCTYPE html> to </html>.
 - The main app script MUST use <script type="text/babel"> so JSX is transpiled by Babel.
+- CRITICAL: NEVER call React hooks (useState, useCallback, useMemo) at the top module level. All hooks MUST be inside a React function component body to avoid "Invalid hook call" errors.
 - End with: const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />);
 - The entire app must work when pasted into a browser as an HTML file."""
 
@@ -124,8 +119,7 @@ CRITICAL OUTPUT RULES:
 
 async def _gemini_stream(system: str, user: str) -> AsyncGenerator[str, None]:
     if not is_gemini_configured() or not client:
-        yield "<!-- Gemini API key not configured -->"
-        return
+        raise Exception("Gemini API key not configured")
 
     try:
         print("[gemini_service] Starting stream...")
@@ -139,6 +133,11 @@ async def _gemini_stream(system: str, user: str) -> AsyncGenerator[str, None]:
                 max_output_tokens=65536,
             )
         )
+    except Exception as e:
+        print(f"[gemini_service] Initial Error: {e}")
+        raise e
+        
+    try:
         
         async for chunk in response_stream:
             if chunk.text:
@@ -173,8 +172,8 @@ async def _gemini_stream(system: str, user: str) -> AsyncGenerator[str, None]:
 
 async def stream_website_gemini(prompt: str) -> AsyncGenerator[str, None]:
     user_msg = (
-        f"Build a premium, high-converting website for: {prompt}. "
-        "Make it feel like a $50k/year SaaS product. Output ONLY raw HTML."
+        f"Build a premium, high-quality UI for: {prompt}. "
+        "Ensure it precisely matches the requested layout and functionality. Output ONLY raw HTML."
     )
     async for chunk in _gemini_stream(WEBSITE_SYSTEM, user_msg):
         yield chunk
@@ -190,7 +189,7 @@ async def stream_fullstack_frontend_gemini(prompt: str) -> AsyncGenerator[str, N
     """Stream a complete self-contained React app HTML file via Gemini."""
     user_msg = (
         f"Build a complete, production-grade web application frontend for: {prompt}. "
-        "Make it feel like a premium $200/month SaaS dashboard. "
+        "Make it feel extremely premium and polished. "
         "Include realistic mock data. "
         "IMPORTANT: Start your response IMMEDIATELY with <!DOCTYPE html>. "
         "Do NOT include any text, planning, scratchpad, or explanation before the HTML. "

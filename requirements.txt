@@ -12,3 +12,4 @@ google-genai
 pydantic-settings
 pydantic[email]
 python-multipart
+anthropic
