@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     DndContext,
     DragOverlay,
@@ -11,8 +12,10 @@ import {
 import {
     LayoutGrid, Type, Image, Square, MousePointer2,
     Minus, PanelTop, FormInput, Sparkles, Trash2,
-    Grid3X3, Move, Settings, GripVertical, X, PanelRightOpen, PanelRightClose
+    Grid3X3, Move, Settings, GripVertical, X, PanelRightOpen, PanelRightClose, Zap, ArrowLeft
 } from 'lucide-react';
+import { API_BASE } from '../config';
+import { stripHtmlPreamble, StreamingView, PreviewIframe } from '../components/GenerationUtils';
 import './VisualBuilder.css';
 
 // ─── Component Registry ──────────────────────────────────────────────────────
@@ -517,7 +520,17 @@ const VisualBuilder = () => {
     const [activeItem, setActiveItem] = useState(null);
     const [isOver, setIsOver] = useState(false);
     const [showProperties, setShowProperties] = useState(false);
+    
+    // Generation states
+    const [mode, setMode] = useState('design'); // 'design' | 'generate'
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [streamBuffer, setStreamBuffer] = useState('');
+    const [previewHtml, setPreviewHtml] = useState('');
+    const [previewKey, setPreviewKey] = useState(0);
+
     const canvasRef = useRef(null);
+    const abortRef = useRef(null);
+    const navigate = useNavigate();
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -641,6 +654,83 @@ const VisualBuilder = () => {
         setEditingId(null);
     }, []);
 
+    const handleGenerateWebsite = useCallback(async () => {
+        if (components.length === 0) {
+            alert("Please drag and drop at least one component onto the canvas before generating a website.");
+            return;
+        }
+        const serialized = JSON.stringify(components, null, 2);
+        
+        setMode('generate');
+        setStreamBuffer('');
+        setPreviewHtml('');
+        setPreviewKey(k => k + 1);
+        setIsStreaming(true);
+
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        try {
+            const res = await fetch(`${API_BASE}/generate/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({ prompt: serialized, type: 'react_builder' }),
+                signal: controller.signal,
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                setStreamBuffer(`Error: ${err.detail || 'Generation failed'}`);
+                setIsStreaming(false);
+                return;
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let accumulated = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const dataStr = line.slice(6).trim();
+                        if (dataStr === '[DONE]') continue;
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.chunk) {
+                                accumulated += parsed.chunk;
+                                setStreamBuffer(accumulated);
+                            }
+                        } catch { /* skip malformed SSE */ }
+                    }
+                }
+            }
+
+            if (accumulated) {
+                setPreviewHtml(stripHtmlPreamble(accumulated));
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                setStreamBuffer(prev => prev + `\n\n[Error: ${err.message}]`);
+            }
+        } finally {
+            setIsStreaming(false);
+            abortRef.current = null;
+        }
+    }, [components]);
+
     // Build drag overlay content
     let overlayContent = null;
     if (activeItem) {
@@ -681,7 +771,32 @@ const VisualBuilder = () => {
             onDragCancel={handleDragCancel}
         >
             <div className="builder-page">
-                {/* ── Palette ── */}
+                {mode === 'generate' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100vh', background: 'var(--bg)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 24px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                            <button onClick={() => setMode('design')} style={{
+                                display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent',
+                                border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '6px',
+                                color: 'var(--text)', cursor: 'pointer', fontSize: '13px'
+                            }}>
+                                <ArrowLeft size={14} /> Back to Editor
+                            </button>
+                            <div style={{ marginLeft: 'auto', fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>
+                                Live Output & Preview
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                            <div style={{ width: '45%', borderRight: '1px solid var(--border)' }}>
+                                <StreamingView buffer={streamBuffer} isStreaming={isStreaming} type="react_builder" />
+                            </div>
+                            <div style={{ flex: 1, background: '#fff', position: 'relative' }}>
+                                <PreviewIframe html={previewHtml} previewKey={previewKey} />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {/* ── Palette ── */}
                 <div className="builder-palette">
                     <div className="palette-header">
                         <div className="palette-title"><LayoutGrid size={16} /> Components</div>
@@ -714,9 +829,14 @@ const VisualBuilder = () => {
                         </div>
                         <div className="canvas-toolbar-right">
                             {components.length > 0 && (
-                                <button className="toolbar-btn danger" onClick={handleClearAll}>
-                                    <Trash2 size={12} /> Clear All
-                                </button>
+                                <>
+                                    <button className="toolbar-btn primary" onClick={handleGenerateWebsite} style={{ background: '#6366f1', color: 'white', borderColor: '#4f46e5' }}>
+                                        <Zap size={12} /> Generate Website
+                                    </button>
+                                    <button className="toolbar-btn danger" onClick={handleClearAll}>
+                                        <Trash2 size={12} /> Clear All
+                                    </button>
+                                </>
                             )}
                             <button className="toolbar-btn" onClick={() => setShowProperties(p => !p)}>
                                 {showProperties ? <PanelRightClose size={12} /> : <PanelRightOpen size={12} />}
@@ -759,6 +879,8 @@ const VisualBuilder = () => {
                         component={selectedComponent}
                         onUpdate={handleUpdateComponent}
                     />
+                )}
+                    </>
                 )}
             </div>
 

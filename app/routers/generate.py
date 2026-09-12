@@ -16,14 +16,16 @@ from app.services.groq_service import (
 )
 from app.services.gemini_service import (
     stream_website_gemini, stream_refine_gemini,
-    stream_fullstack_frontend_gemini, is_gemini_configured
+    stream_fullstack_frontend_gemini, is_gemini_configured,
+    stream_react_builder_gemini
 )
 from app.services.groq_service import (
     generate_text, generate_website, refine_website,
     generate_backend_code, generate_fullstack, extract_code_block,
     stream_website_openai, stream_refine_openai,
     stream_fullstack_frontend_openai,
-    stream_fullstack_frontend_nvidia
+    stream_fullstack_frontend_nvidia,
+    stream_react_builder_openai
 )
 from app.services.credit_service import deduct_credit
 
@@ -172,6 +174,26 @@ async def generate_stream(
                 # Send the backend payload at the end for the code viewer tab
                 chunks.append(backend_serialized)
                 yield f"data: {json.dumps({'backend_payload': backend_serialized})}\n\n"
+
+            elif data.type == "react_builder":
+                try:
+                    iterator = stream_react_builder_gemini(data.prompt)
+                    first_token = await iterator.__anext__()
+                    
+                    if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
+                        raise Exception(first_token)
+                        
+                    chunks.append(first_token)
+                    yield f"data: {json.dumps({'chunk': first_token})}\n\n"
+                    
+                    async for token in iterator:
+                        chunks.append(token)
+                        yield f"data: {json.dumps({'chunk': token})}\n\n"
+                except Exception as e:
+                    print(f"[generate.py] Gemini failed, falling back to OpenAI for react_builder: {e}")
+                    async for token in stream_react_builder_openai(data.prompt):
+                        chunks.append(token)
+                        yield f"data: {json.dumps({'chunk': token})}\n\n"
 
             elif data.type == "backend":
                 # Groq generates backend; send heartbeat then full payload
@@ -426,6 +448,24 @@ async def generate(
             except Exception as e:
                 print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy website: {e}")
                 async for chunk in stream_website_openai(data.prompt):
+                    chunks.append(chunk)
+            output = "".join(chunks)
+            response_time = int((time.time() - st) * 1000)
+            db_output = extract_code_block(output)
+        elif data.type == "react_builder":
+            chunks = []
+            st = time.time()
+            try:
+                iterator = stream_react_builder_gemini(data.prompt)
+                first_token = await iterator.__anext__()
+                if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
+                    raise Exception(first_token)
+                chunks.append(first_token)
+                async for chunk in iterator:
+                    chunks.append(chunk)
+            except Exception as e:
+                print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy react_builder: {e}")
+                async for chunk in stream_react_builder_openai(data.prompt):
                     chunks.append(chunk)
             output = "".join(chunks)
             response_time = int((time.time() - st) * 1000)

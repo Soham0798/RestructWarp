@@ -280,9 +280,12 @@ const DashboardLayout = () => {
             {/* ── Main Content ────────────────────────────────────────────────── */}
             <main className="main" style={{
                 flex: 1, marginLeft: sidebarWidth,
+                width: `calc(100vw - ${sidebarWidth})`,
+                maxWidth: `calc(100vw - ${sidebarWidth})`,
                 minHeight: '100vh', position: 'relative', zIndex: 1,
                 display: 'flex', flexDirection: 'column',
-                transition: 'margin-left 0.25s cubic-bezier(0.4,0,0.2,1)'
+                overflow: 'hidden',
+                transition: 'margin-left 0.25s cubic-bezier(0.4,0,0.2,1), width 0.25s cubic-bezier(0.4,0,0.2,1), max-width 0.25s cubic-bezier(0.4,0,0.2,1)'
             }}>
                 <Outlet />
             </main>

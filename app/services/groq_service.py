@@ -294,7 +294,9 @@ Request: {prompt}
 # ─── OpenAI Streaming (Fallback) ───
 
 from typing import AsyncGenerator
-from app.services.gemini_service import WEBSITE_SYSTEM, REFINE_SYSTEM, FULLSTACK_FRONTEND_SYSTEM
+from app.services.gemini_service import (
+    WEBSITE_SYSTEM, REFINE_SYSTEM, FULLSTACK_FRONTEND_SYSTEM, REACT_BUILDER_SYSTEM
+)
 
 async def _openai_stream(system: str, user: str) -> AsyncGenerator[str, None]:
     try:
@@ -347,6 +349,11 @@ async def stream_website_openai(prompt: str) -> AsyncGenerator[str, None]:
 async def stream_refine_openai(current_code: str, prompt: str) -> AsyncGenerator[str, None]:
     user_msg = f"EXISTING HTML:\n{current_code}\n\nUSER REQUEST:\n{prompt}\n\nOutput ONLY raw HTML. No markdown code blocks."
     async for chunk in _openai_stream(REFINE_SYSTEM, user_msg):
+        yield chunk
+
+async def stream_react_builder_openai(prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = f"BUILDER STATE:\n{prompt}"
+    async for chunk in _openai_stream(REACT_BUILDER_SYSTEM, user_msg):
         yield chunk
 
 async def stream_fullstack_frontend_openai(prompt: str) -> AsyncGenerator[str, None]:

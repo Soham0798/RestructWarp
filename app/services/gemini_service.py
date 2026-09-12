@@ -114,6 +114,38 @@ CRITICAL OUTPUT RULES:
 - End with: const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />);
 - The entire app must work when pasted into a browser as an HTML file."""
 
+REACT_BUILDER_SYSTEM = """You are a website generator that converts a visual drag-and-drop builder's state into a complete, working, self-contained HTML file.
+
+INPUT:
+You will receive the current state of a drag-and-drop website builder as a JSON array of components. Each component includes:
+- type (button, text, heading, image, input, card, divider, hero, navbar)
+- props (label, text, title, subtitle, btnText, placeholder, brand, links, src, alt)
+- position (x, y) and size (width, height)
+
+TASK:
+Convert this builder state into a COMPLETE, self-contained HTML file that looks polished and premium.
+
+TECH STACK (all via CDN):
+- React 18 (UMD)
+- ReactDOM 18 (UMD)
+- Babel Standalone (REQUIRED for JSX)
+- Tailwind CSS via CDN script tag
+
+RULES:
+1. Preserve every component's content EXACTLY as provided — do not invent or omit content.
+2. Arrange components in a sensible responsive layout (ignore x/y coordinates, use a clean vertical flow).
+3. Make the design premium: dark mode (#0a0c12 background), glassmorphism cards, smooth hover effects, gradients.
+4. Use semantic HTML inside React components.
+5. Your main app code MUST be in a <script type="text/babel"> tag.
+6. ALL hooks must be inside function component bodies.
+7. End with: const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />);
+
+CRITICAL OUTPUT RULES:
+- Start IMMEDIATELY with <!DOCTYPE html>. No text before it.
+- No markdown fences, no explanations, no preamble.
+- Output ONLY the raw HTML file from <!DOCTYPE html> to </html>.
+- The file must work when opened directly in a browser."""
+
 
 # ─── Gemini streaming (primary) ───────────────────────────────────────────────
 
@@ -212,6 +244,25 @@ async def stream_fullstack_frontend_gemini(prompt: str) -> AsyncGenerator[str, N
                 # Yield from the HTML start onward
                 yield buffer[match.start():]
             # If buffer is getting large without finding HTML, flush it
+            elif len(buffer) > 500:
+                preamble_done = True
+                yield buffer
+
+
+async def stream_react_builder_gemini(prompt: str) -> AsyncGenerator[str, None]:
+    user_msg = f"BUILDER STATE:\n{prompt}"
+    preamble_done = False
+    buffer = ''
+
+    async for chunk in _gemini_stream(REACT_BUILDER_SYSTEM, user_msg):
+        if preamble_done:
+            yield chunk
+        else:
+            buffer += chunk
+            match = re.search(r'(?i)(<!doctype\s+html|<html|<!)', buffer)
+            if match:
+                preamble_done = True
+                yield buffer[match.start():]
             elif len(buffer) > 500:
                 preamble_done = True
                 yield buffer
