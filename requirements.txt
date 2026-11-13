@@ -12,4 +12,5 @@ google-genai
 pydantic-settings
 pydantic[email]
 python-multipart
-anthropic
+anthropic>=2.8.0
+asyncpg

@@ -2,13 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Globe, Layers, Server, Sparkles, Send, RefreshCw, Eye, Code2,
-    Loader2, ChevronRight, Copy, Check, X, Zap, Activity, FileCode,
+    Loader2, ChevronRight, Copy, Check, X, FileCode,
     Terminal, Play, StopCircle, MessageSquare, Bot, User as UserIcon,
     FolderTree, ChevronDown, ChevronRight as ChevRight,
     Maximize2, Minimize2
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { stripHtmlPreamble, CopyButton, StreamingView, PreviewIframe } from '../components/GenerationUtils';
+import DeployButton from '../components/DeployButton';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -92,20 +93,6 @@ const Generate = () => {
     const textareaRef = useRef(null);
     const chatEndRef = useRef(null);
     const iframeRef = useRef(null);
-
-    // ── engine: 'claude' | 'groq-fallback' | 'groq' | null (loading)
-    const [engine, setEngine] = useState(null);
-
-
-
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        fetch(`${API_BASE}/generate/status`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(d => setEngine(d.engine ?? (d.claude_available ? 'claude' : 'groq')))
-            .catch(() => setEngine('groq'));
-    }, []);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -378,18 +365,12 @@ const Generate = () => {
     return (
         <div className="generate-page animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
 
-            {/* ── TOP BAR ── */}
-            <div className="topbar">
-                <div className="topbar-pill"><Sparkles className="pill-icon" /> AI Code Generator</div>
-                <div className="topbar-divider"></div>
-                {engine === 'claude' && <div className="topbar-pill featured"><Activity className="pill-icon" /> Claude Opus Streaming</div>}
-                {engine === 'openai' && <div className="topbar-pill featured"><Sparkles className="pill-icon" /> OpenAI o3-mini Reasoning</div>}
-                {engine === 'deepseek' && <div className="topbar-pill"><Zap className="pill-icon" /> DeepSeek Streaming</div>}
-                {(engine === 'groq-fallback' || engine === 'groq') && <div className="topbar-pill"><Zap className="pill-icon" /> Groq Fast Streaming</div>}
-            </div>
-
             {/* ── CONTENT AREA ── */}
-            <div className="content" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="content" style={{
+                display: 'flex', flexDirection: 'column',
+                // Extra room above the headline; tighter once the output panel is open
+                paddingTop: (isStreaming || hasOutput) ? '48px' : '96px',
+            }}>
 
                 {/* Hero */}
                 <h1 className="hero-headline">Build anything with a <span className="accent">single prompt</span></h1>
@@ -542,6 +523,9 @@ const Generate = () => {
                                         style={{ padding: '5px 12px', fontSize: '0.75rem', gap: '5px', cursor: 'pointer' }}>
                                         <RefreshCw size={12} /> Regenerate
                                     </button>
+                                )}
+                                {hasOutput && !isStreaming && !refineStreaming && (previewHtml || parsed?.html) && (
+                                    <DeployButton html={stripHtmlPreamble(previewHtml || parsed.html)} name={prompt} />
                                 )}
                                 <button
                                     type="button"

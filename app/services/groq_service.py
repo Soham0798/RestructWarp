@@ -98,6 +98,7 @@ Your goal is to build a premium, expensive-looking, and highly polished UI that 
 ### 1. CRITICAL CSS INSTRUCTION
 Rewrite the entire app as a single self-contained HTML file with ALL CSS written inside a <style> tag in the <head> — no external stylesheets, no CDN links, no separate .css files, no Tailwind or any framework that requires a build step.
 Every single style must be written in raw vanilla CSS inside that one <style> block. Verify that every element — every div, section, nav, button, card, icon, input, and container — has explicit CSS rules covering: background-color, color, font-family, padding, margin, display, width, height, border-radius, and position where applicable.
+Apply these rules through class or element selectors only. The universal selector (*) may only set box-sizing, margin and padding — NEVER set `display`, `width`, `height` or `position` on `*`, because that makes <head>, <style> and <script> render as visible text and breaks every block element.
 The final output must open perfectly in any browser with zero internet connection and render as a fully styled, visually polished UI.
 
 ### 2. DESIGN SYSTEM (Vanilla CSS)

@@ -13,5 +13,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = "" # fallback for frontend tasks
     OPENAI_API_KEY: str = ""
     NVIDIA_API_KEY: str = ""
+    VERCEL_TOKEN: str = ""      # enables the Deploy button (vercel.com/account/tokens)
+    VERCEL_TEAM_ID: str = ""    # optional: deploy into a team instead of the token's personal account
 
 settings = Settings()

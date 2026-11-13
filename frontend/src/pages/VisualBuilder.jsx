@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { stripHtmlPreamble, StreamingView, PreviewIframe } from '../components/GenerationUtils';
+import DeployButton from '../components/DeployButton';
 import './VisualBuilder.css';
 
 // ─── Component Registry ──────────────────────────────────────────────────────
@@ -781,8 +782,11 @@ const VisualBuilder = () => {
                             }}>
                                 <ArrowLeft size={14} /> Back to Editor
                             </button>
-                            <div style={{ marginLeft: 'auto', fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>
+                            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px', fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>
                                 Live Output & Preview
+                                {previewHtml && !isStreaming && (
+                                    <DeployButton html={previewHtml} name="visual-builder" />
+                                )}
                             </div>
                         </div>
                         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

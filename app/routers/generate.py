@@ -1,18 +1,23 @@
+import asyncio
 import json
 import time
+from typing import AsyncGenerator
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from sqlalchemy.future import select
+from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.generation import Generation
 from app.security.jwt_handler import verify_token
 from app.schemas.generate_schema import GenerateSchema
-from app.services.groq_service import (
-    generate_text, generate_website, refine_website,
-    generate_backend_code, generate_fullstack, extract_code_block
+from app.services.anthropic_service import (
+    stream_website_anthropic, stream_refine_anthropic,
+    stream_fullstack_frontend_anthropic, stream_react_builder_anthropic,
+    is_anthropic_configured,
 )
 from app.services.gemini_service import (
     stream_website_gemini, stream_refine_gemini,
@@ -20,8 +25,7 @@ from app.services.gemini_service import (
     stream_react_builder_gemini
 )
 from app.services.groq_service import (
-    generate_text, generate_website, refine_website,
-    generate_backend_code, generate_fullstack, extract_code_block,
+    generate_text, generate_backend_code, extract_code_block,
     stream_website_openai, stream_refine_openai,
     stream_fullstack_frontend_openai,
     stream_fullstack_frontend_nvidia,
@@ -35,12 +39,6 @@ security = HTTPBearer()
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async def _get_user(payload: dict) -> User | None:
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User).where(User.id == payload["user_id"]))
-        return result.scalar_one_or_none()
-
-
 def _require_payload(credentials: HTTPAuthorizationCredentials) -> dict:
     payload = verify_token(credentials.credentials)
     if not payload:
@@ -48,7 +46,75 @@ def _require_payload(credentials: HTTPAuthorizationCredentials) -> dict:
     return payload
 
 
-# ─── POST /generate/stream  (Claude streaming – website) ─────────────────────
+# Frontend generation engines, tried in order: Claude (primary) -> Gemini -> OpenAI (-> NVIDIA).
+FRONTEND_PROVIDERS = {
+    "website": [
+        ("claude", stream_website_anthropic),
+        ("gemini", stream_website_gemini),
+        ("openai", stream_website_openai),
+    ],
+    "refine": [
+        ("claude", stream_refine_anthropic),
+        ("gemini", stream_refine_gemini),
+        ("openai", stream_refine_openai),
+    ],
+    "fullstack": [
+        ("claude", stream_fullstack_frontend_anthropic),
+        ("gemini", stream_fullstack_frontend_gemini),
+        ("openai", stream_fullstack_frontend_openai),
+        ("nvidia", stream_fullstack_frontend_nvidia),
+    ],
+    "react_builder": [
+        ("claude", stream_react_builder_anthropic),
+        ("gemini", stream_react_builder_gemini),
+        ("openai", stream_react_builder_openai),
+    ],
+}
+
+
+async def _stream_frontend(kind: str, *args) -> AsyncGenerator[str, None]:
+    """Streams tokens from the first engine that starts producing output.
+
+    An engine that fails before its first token is skipped and the next one is tried.
+    """
+    last_error = None
+    for name, make_stream in FRONTEND_PROVIDERS[kind]:
+        if name == "claude" and not is_anthropic_configured():
+            continue
+        try:
+            iterator = make_stream(*args)
+            first_token = await iterator.__anext__()
+            if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
+                raise Exception(first_token)
+        except Exception as e:
+            print(f"[generate.py] {name} failed for {kind}, trying next engine: {e!r}")
+            last_error = e
+            continue
+
+        yield first_token
+        async for token in iterator:
+            yield token
+        return
+
+    raise Exception(f"All AI engines failed. Last error: {last_error}")
+
+
+async def _collect_frontend(kind: str, *args) -> str:
+    return "".join([token async for token in _stream_frontend(kind, *args)])
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+}
+
+
+# ─── POST /generate/stream  (streaming generation) ───────────────────────────
 
 @router.post("/stream")
 async def generate_stream(
@@ -56,7 +122,7 @@ async def generate_stream(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """
-    Streams HTML generation token-by-token using Claude.
+    Streams generation token-by-token.
     SSE format: `data: {"chunk": "...token..."}\n\n`
     Ends with:  `data: [DONE]\n\n`
     On error:   `data: {"error": "..."}\n\n`
@@ -69,43 +135,24 @@ async def generate_stream(
 
     async def event_stream():
         try:
-            if data.type == "website":
-                # True token-by-token streaming for websites
-                try:
-                    iterator = stream_website_gemini(data.prompt)
-                    first_token = await iterator.__anext__()
-                    
-                    if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                        raise Exception(first_token)
-                        
-                    chunks.append(first_token)
-                    yield f"data: {json.dumps({'chunk': first_token})}\n\n"
-                    
-                    async for token in iterator:
-                        chunks.append(token)
-                        yield f"data: {json.dumps({'chunk': token})}\n\n"
-                except Exception as e:
-                    print(f"[generate.py] Gemini failed, falling back to OpenAI for website: {e}")
-                    async for token in stream_website_openai(data.prompt):
-                        chunks.append(token)
-                        yield f"data: {json.dumps({'chunk': token})}\n\n"
+            if data.type in ("website", "react_builder"):
+                async for token in _stream_frontend(data.type, data.prompt):
+                    chunks.append(token)
+                    yield _sse({'chunk': token})
 
             elif data.type == "fullstack":
                 # Sequential Generation: Backend First -> Frontend Second
-                import asyncio
-                
+
                 # 1. Start Groq backend generation as a background task
                 backend_task = asyncio.create_task(generate_backend_code(data.prompt))
-                
-                # Yield initial status
-                yield f"data: {json.dumps({'chunk': '/* Step 1: Designing Backend API... */\\n'})}\n\n"
-                
+
+                yield _sse({'chunk': '/* Step 1: Designing Backend API... */\n'})
+
                 # Heartbeat while waiting for backend (prevents timeout & updates UI)
                 while not backend_task.done():
-                    yield f"data: {json.dumps({'chunk': '.'})}\n\n"
+                    yield _sse({'chunk': '.'})
                     await asyncio.sleep(1.0)
-                    
-                # Backend complete
+
                 try:
                     backend_output, _ = backend_task.result()
                     backend_serialized = (
@@ -113,12 +160,12 @@ async def generate_stream(
                         else json.dumps(backend_output)
                     )
                 except Exception as be:
-                    yield f"data: {json.dumps({'backend_error': str(be)})}\n\n"
+                    yield _sse({'backend_error': str(be)})
                     # If backend fails, we stop the stream
                     return
-                
-                yield f"data: {json.dumps({'chunk': '\\n\\n/* Backend Complete.\\n   Step 2: Building Frontend... */\\n\\n'})}\n\n"
-                
+
+                yield _sse({'chunk': '\n\n/* Backend Complete.\n   Step 2: Building Frontend... */\n\n'})
+
                 # 2. Inject Backend Spec into Frontend Prompt
                 enriched_prompt = (
                     f"{data.prompt}\n\n"
@@ -127,102 +174,35 @@ async def generate_stream(
                     f"--- BACKEND API SPECIFICATION ---\n{backend_serialized}\n---------------------------------\n"
                 )
 
-                # 3. Stream Gemini frontend tokens in real-time
+                # 3. Stream frontend tokens in real-time
                 frontend_html = []
-                try:
-                    iterator = stream_fullstack_frontend_gemini(enriched_prompt)
-                    first_token = await iterator.__anext__()
-                    
-                    if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                        raise Exception(first_token)
-                        
-                    frontend_html.append(first_token)
-                    chunks.append(first_token)
-                    yield f"data: {json.dumps({'chunk': first_token})}\n\n"
-                    
-                    async for token in iterator:
-                        frontend_html.append(token)
-                        chunks.append(token)
-                        yield f"data: {json.dumps({'chunk': token})}\n\n"
-                except Exception as e:
-                    print(f"[generate.py] Gemini failed, falling back to OpenAI for fullstack: {e}")
-                    try:
-                        iterator = stream_fullstack_frontend_openai(enriched_prompt)
-                        first_token = await iterator.__anext__()
-                        if first_token.startswith("<!-- Error:"):
-                            raise Exception(first_token)
-                            
-                        frontend_html.append(first_token)
-                        chunks.append(first_token)
-                        yield f"data: {json.dumps({'chunk': first_token})}\n\n"
-                        
-                        async for token in iterator:
-                            frontend_html.append(token)
-                            chunks.append(token)
-                            yield f"data: {json.dumps({'chunk': token})}\n\n"
-                    except Exception as e2:
-                        print(f"[generate.py] OpenAI failed, falling back to NVIDIA for fullstack: {e2}")
-                        async for token in stream_fullstack_frontend_nvidia(enriched_prompt):
-                            frontend_html.append(token)
-                            chunks.append(token)
-                            yield f"data: {json.dumps({'chunk': token})}\n\n"
+                async for token in _stream_frontend("fullstack", enriched_prompt):
+                    frontend_html.append(token)
+                    chunks.append(token)
+                    yield _sse({'chunk': token})
 
                 # Frontend done — send the preview HTML as a separate event
-                preview_html = "".join(frontend_html)
-                yield f"data: {json.dumps({'preview': preview_html})}\n\n"
+                yield _sse({'preview': "".join(frontend_html)})
 
                 # Send the backend payload at the end for the code viewer tab
                 chunks.append(backend_serialized)
-                yield f"data: {json.dumps({'backend_payload': backend_serialized})}\n\n"
-
-            elif data.type == "react_builder":
-                try:
-                    iterator = stream_react_builder_gemini(data.prompt)
-                    first_token = await iterator.__anext__()
-                    
-                    if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                        raise Exception(first_token)
-                        
-                    chunks.append(first_token)
-                    yield f"data: {json.dumps({'chunk': first_token})}\n\n"
-                    
-                    async for token in iterator:
-                        chunks.append(token)
-                        yield f"data: {json.dumps({'chunk': token})}\n\n"
-                except Exception as e:
-                    print(f"[generate.py] Gemini failed, falling back to OpenAI for react_builder: {e}")
-                    async for token in stream_react_builder_openai(data.prompt):
-                        chunks.append(token)
-                        yield f"data: {json.dumps({'chunk': token})}\n\n"
+                yield _sse({'backend_payload': backend_serialized})
 
             elif data.type == "backend":
-                # Groq generates backend; send heartbeat then full payload
-                import asyncio
-                working = True
-
-                async def _hb():
-                    while working:
-                        await asyncio.sleep(1)
-
-                hb = asyncio.create_task(_hb())
-                try:
-                    output, _ = await generate_backend_code(data.prompt)
-                finally:
-                    working = False
-                    hb.cancel()
-
+                # Groq generates backend; send the full payload when done
+                output, _ = await generate_backend_code(data.prompt)
                 serialized = output if isinstance(output, str) else json.dumps(output)
                 chunks.append(serialized)
-                yield f"data: {json.dumps({'payload': serialized, 'output_type': 'backend'})}\n\n"
+                yield _sse({'payload': serialized, 'output_type': 'backend'})
 
             else:
                 output, _ = await generate_text(data.prompt)
                 serialized = output if isinstance(output, str) else json.dumps(output)
                 chunks.append(serialized)
-                yield f"data: {json.dumps({'payload': serialized, 'output_type': data.type})}\n\n"
+                yield _sse({'payload': serialized, 'output_type': data.type})
 
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield _sse({'error': str(e)})
         finally:
             yield "data: [DONE]\n\n"
 
@@ -253,16 +233,12 @@ async def generate_stream(
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
+        headers=SSE_HEADERS,
         background=BackgroundTask(_save_to_db),
     )
 
 
-# ─── POST /generate/refine-stream  (Claude streaming refine) ─────────────────
+# ─── POST /generate/refine-stream  (streaming refine) ────────────────────────
 
 @router.post("/refine-stream")
 async def refine_stream(
@@ -279,26 +255,11 @@ async def refine_stream(
 
     async def event_stream():
         try:
-            try:
-                iterator = stream_refine_gemini(data.current_code, data.prompt)
-                first_token = await iterator.__anext__()
-                
-                if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                    raise Exception(first_token)
-                    
-                chunks.append(first_token)
-                yield f"data: {json.dumps({'chunk': first_token})}\n\n"
-                
-                async for token in iterator:
-                    chunks.append(token)
-                    yield f"data: {json.dumps({'chunk': token})}\n\n"
-            except Exception as e:
-                print(f"[generate.py] Gemini failed, falling back to OpenAI for refine: {e}")
-                async for token in stream_refine_openai(data.current_code, data.prompt):
-                    chunks.append(token)
-                    yield f"data: {json.dumps({'chunk': token})}\n\n"
+            async for token in _stream_frontend("refine", data.current_code, data.prompt):
+                chunks.append(token)
+                yield _sse({'chunk': token})
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield _sse({'error': str(e)})
         finally:
             yield "data: [DONE]\n\n"
 
@@ -328,11 +289,7 @@ async def refine_stream(
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
+        headers=SSE_HEADERS,
         background=BackgroundTask(_save_to_db),
     )
 
@@ -343,28 +300,29 @@ async def refine_stream(
 async def generation_status():
     """
     Returns the status of the AI generation engines.
-    Frontend: Gemini (Primary) -> OpenAI (Fallback)
+    Frontend: Claude (Primary) -> Gemini -> OpenAI (Fallbacks)
     Backend: Groq (Exclusive)
     """
-    from app.config import settings
+    claude_ok = is_anthropic_configured()
     gemini_ok = is_gemini_configured()
-    openai_ok = bool(settings.OPENAI_API_KEY) 
+    openai_ok = bool(settings.OPENAI_API_KEY)
 
-    if not gemini_ok:
-        return {
-            "engine": "openai" if openai_ok else "groq",
-            "gemini_available": False,
-            "openai_available": openai_ok,
-            "groq_available": True, # Always available for backend
-            "streaming": True
-        }
+    if claude_ok:
+        engine = "claude"
+    elif gemini_ok:
+        engine = "gemini"
+    elif openai_ok:
+        engine = "openai"
+    else:
+        engine = "groq"
 
     return {
-        "engine": "gemini",
-        "gemini_available": True,
+        "engine": engine,
+        "claude_available": claude_ok,
+        "gemini_available": gemini_ok,
         "openai_available": openai_ok,
-        "groq_available": True,
-        "streaming": True
+        "groq_available": True,  # Always available for backend
+        "streaming": True,
     }
 
 
@@ -384,23 +342,8 @@ async def refine(
         result = await db.execute(select(User).where(User.id == payload["user_id"]))
         user = result.scalar_one()
 
-        # Use streaming service and collect chunks for legacy support
-        chunks = []
         start_time_ts = time.time()
-        try:
-            iterator = stream_refine_gemini(data.current_code, data.prompt)
-            first_token = await iterator.__anext__()
-            if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                raise Exception(first_token)
-            chunks.append(first_token)
-            async for chunk in iterator:
-                chunks.append(chunk)
-        except Exception as e:
-            print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy refine: {e}")
-            async for chunk in stream_refine_openai(data.current_code, data.prompt):
-                chunks.append(chunk)
-        
-        output = "".join(chunks)
+        output = await _collect_frontend("refine", data.current_code, data.prompt)
         response_time = int((time.time() - start_time_ts) * 1000)
 
         await deduct_credit(db, user)
@@ -433,41 +376,9 @@ async def generate(
         result = await db.execute(select(User).where(User.id == payload["user_id"]))
         user = result.scalar_one()
 
-        if data.type == "website":
-            # Use Gemini for website
-            chunks = []
-            st = time.time()
-            try:
-                iterator = stream_website_gemini(data.prompt)
-                first_token = await iterator.__anext__()
-                if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                    raise Exception(first_token)
-                chunks.append(first_token)
-                async for chunk in iterator:
-                    chunks.append(chunk)
-            except Exception as e:
-                print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy website: {e}")
-                async for chunk in stream_website_openai(data.prompt):
-                    chunks.append(chunk)
-            output = "".join(chunks)
-            response_time = int((time.time() - st) * 1000)
-            db_output = extract_code_block(output)
-        elif data.type == "react_builder":
-            chunks = []
-            st = time.time()
-            try:
-                iterator = stream_react_builder_gemini(data.prompt)
-                first_token = await iterator.__anext__()
-                if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                    raise Exception(first_token)
-                chunks.append(first_token)
-                async for chunk in iterator:
-                    chunks.append(chunk)
-            except Exception as e:
-                print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy react_builder: {e}")
-                async for chunk in stream_react_builder_openai(data.prompt):
-                    chunks.append(chunk)
-            output = "".join(chunks)
+        st = time.time()
+        if data.type in ("website", "react_builder"):
+            output = await _collect_frontend(data.type, data.prompt)
             response_time = int((time.time() - st) * 1000)
             db_output = extract_code_block(output)
         elif data.type == "backend":
@@ -475,33 +386,13 @@ async def generate(
             output, response_time = await generate_backend_code(data.prompt)
             db_output = output if isinstance(output, str) else json.dumps(output)
         elif data.type == "fullstack":
-            # Use Gemini for frontend and Groq for backend
-            import asyncio
-            st = time.time()
-            
-            async def get_frontend():
-                chunks = []
-                try:
-                    iterator = stream_fullstack_frontend_gemini(data.prompt)
-                    first_token = await iterator.__anext__()
-                    if first_token.startswith("<!-- Error:") or first_token.startswith("<!-- Gemini"):
-                        raise Exception(first_token)
-                    chunks.append(first_token)
-                    async for chunk in iterator:
-                        chunks.append(chunk)
-                except Exception as e:
-                    print(f"[generate.py] Gemini failed, falling back to OpenAI for legacy fullstack: {e}")
-                    async for chunk in stream_fullstack_frontend_openai(data.prompt):
-                        chunks.append(chunk)
-                return "".join(chunks)
-
-            frontend_task = asyncio.create_task(get_frontend())
-            backend_task = asyncio.create_task(generate_backend_code(data.prompt))
-            
-            frontend_html, (backend_code, _) = await asyncio.gather(frontend_task, backend_task)
-            
+            # Frontend engine and Groq backend run in parallel
+            frontend_html, (backend_code, _) = await asyncio.gather(
+                _collect_frontend("fullstack", data.prompt),
+                generate_backend_code(data.prompt),
+            )
             output = {
-                "frontend": {"preview": frontend_html, "files": {}}, # Legacy structure
+                "frontend": {"preview": frontend_html, "files": {}},  # Legacy structure
                 "backend": backend_code
             }
             response_time = int((time.time() - st) * 1000)

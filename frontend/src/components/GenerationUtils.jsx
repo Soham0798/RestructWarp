@@ -61,6 +61,20 @@ export function stripHtmlPreamble(raw) {
         cleaned = cleaned.replace(/\\`/g, '`');
     }
 
+    // 4c. Fix AI setting `display` on the universal selector (e.g. `* { display: initial }`).
+    // That overrides the browser's `display: none` on <head>/<style>/<script>, so the page's
+    // own CSS and JS show up as visible text, and it turns every unstyled <div> inline.
+    cleaned = cleaned.replace(
+        /(?<=(?:\}|\*\/|<style[^>]*>)\s*)(\*(?:\s*,\s*\*?::?(?:before|after))*\s*\{)([^}]*)\}/gi,
+        (_, selector, body) => selector + body.replace(/(^|;|\*\/)\s*display\s*:[^;]*;?/gi, '$1') + '}'
+    );
+    if (cleaned.includes('</head>') && !cleaned.includes('data-rw-head-guard')) {
+        cleaned = cleaned.replace(
+            '</head>',
+            '<style data-rw-head-guard>head,script,style,title,meta,link,base,template,noscript{display:none!important}</style>\n</head>'
+        );
+    }
+
     // 5. Fix Lucide icons
     if (cleaned.includes('lucide') && !cleaned.includes('lucide-react')) {
         cleaned = cleaned.replace(
