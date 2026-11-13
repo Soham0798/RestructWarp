@@ -7,6 +7,7 @@ import History from './pages/History';
 import Profile from './pages/Profile';
 import Pricing from './pages/Pricing';
 import VisualBuilder from './pages/VisualBuilder';
+import SketchStudio from './pages/SketchStudio';
 import ParticleCursorEffect from './components/ParticleCursorEffect';
 
 const ProtectedRoute = ({ children }) => {
@@ -45,6 +46,7 @@ function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="pricing" element={<Pricing />} />
           <Route path="builder" element={<VisualBuilder />} />
+          <Route path="sketch" element={<SketchStudio />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

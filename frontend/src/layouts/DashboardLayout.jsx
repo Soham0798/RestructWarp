@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
     Sparkles, History, User, LogOut, Menu, X,
-    Zap, Bot, CreditCard, ChevronRight, LayoutGrid, ChevronLeft
+    Zap, Bot, CreditCard, ChevronRight, LayoutGrid, ChevronLeft, PenTool
 } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 
 const NAV_ITEMS = [
     { to: '/', icon: Sparkles, label: 'Generate', end: true },
     { to: '/builder', icon: LayoutGrid, label: 'Builder' },
+    { to: '/sketch', icon: PenTool, label: 'Sketch' },
     { to: '/history', icon: History, label: 'History' },
     { to: '/profile', icon: User, label: 'Profile' },
     { to: '/pricing', icon: Zap, label: 'Upgrade' },

@@ -1,6 +1,12 @@
 from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
 from app.database import Base
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -10,3 +16,6 @@ class User(Base):
     credits = Column(Integer, default=10)
     role = Column(String, default="user")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Sketch Studio projects; deleting a user removes their projects and sketches
+    projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")

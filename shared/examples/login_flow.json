@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "2.0",
+  "name": "Login flow",
+  "screens": [
+    {
+      "id": "screen_login",
+      "name": "Login",
+      "root": {
+        "id": "login_root",
+        "type": "container",
+        "bbox": { "x": 0, "y": 0, "w": 1, "h": 1 },
+        "layout": "column",
+        "children": [
+          {
+            "id": "login_nav",
+            "type": "navbar",
+            "bbox": { "x": 0, "y": 0, "w": 1, "h": 0.1 },
+            "layout": "row",
+            "children": [
+              { "id": "logo", "type": "image", "bbox": { "x": 0.02, "y": 0.02, "w": 0.1, "h": 0.06 }, "props": { "src": "logo.png", "alt": "Company logo" } }
+            ]
+          },
+          { "id": "login_title", "type": "heading", "bbox": { "x": 0.3, "y": 0.15, "w": 0.4, "h": 0.08 }, "props": { "text": "Welcome back", "level": 1 } },
+          {
+            "id": "login_form",
+            "type": "card",
+            "bbox": { "x": 0.3, "y": 0.28, "w": 0.4, "h": 0.5 },
+            "layout": "column",
+            "form": {
+              "name": "login",
+              "fields": [
+                { "name": "email", "type": "email", "label": "Email", "required": true, "componentId": "email_input" },
+                { "name": "password", "type": "password", "label": "Password", "required": true, "componentId": "password_input" }
+              ]
+            },
+            "children": [
+              { "id": "email_input", "type": "input", "bbox": { "x": 0.33, "y": 0.32, "w": 0.34, "h": 0.07 }, "props": { "placeholder": "Email", "ariaLabel": "Email" }, "confidence": 0.94 },
+              { "id": "password_input", "type": "input", "bbox": { "x": 0.33, "y": 0.42, "w": 0.34, "h": 0.07 }, "props": { "placeholder": "Password", "ariaLabel": "Password" }, "confidence": 0.91 },
+              {
+                "id": "login_btn",
+                "type": "button",
+                "bbox": { "x": 0.33, "y": 0.55, "w": 0.34, "h": 0.08 },
+                "props": { "text": "Login" },
+                "styleHints": { "notes": ["blue, rounded"], "styles": { "color": "blue", "radius": "full" } },
+                "confidence": 0.97
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "screen_dashboard",
+      "name": "Dashboard",
+      "root": {
+        "id": "dash_root",
+        "type": "container",
+        "bbox": { "x": 0, "y": 0, "w": 1, "h": 1 },
+        "layout": "column",
+        "children": [
+          { "id": "dash_title", "type": "heading", "bbox": { "x": 0.05, "y": 0.05, "w": 0.5, "h": 0.08 }, "props": { "text": "Dashboard", "level": 1 } },
+          { "id": "dash_text", "type": "text", "bbox": { "x": 0.05, "y": 0.15, "w": 0.6, "h": 0.05 }, "props": { "text": "You are logged in." } }
+        ]
+      }
+    }
+  ],
+  "links": [
+    { "fromScreen": "screen_login", "fromComponent": "login_btn", "toScreen": "screen_dashboard" }
+  ]
+}

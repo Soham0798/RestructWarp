@@ -1,0 +1,10 @@
+{
+  "name": "sketch2ui-a11y",
+  "private": true,
+  "type": "module",
+  "description": "Runs axe-core on generated HTML for the accessibility score (Step 30)",
+  "dependencies": {
+    "axe-core": "^4.10.0",
+    "jsdom": "^25.0.0"
+  }
+}

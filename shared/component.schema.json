@@ -1,0 +1,521 @@
+{
+  "$defs": {
+    "BBox": {
+      "additionalProperties": false,
+      "description": "Position and size as fractions (0-1) of the screen, so image size doesn't matter.",
+      "properties": {
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "w": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "W",
+          "type": "number"
+        },
+        "h": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "H",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "title": "BBox",
+      "type": "object"
+    },
+    "Component": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "navbar",
+            "heading",
+            "text",
+            "button",
+            "input",
+            "textarea",
+            "image",
+            "checkbox",
+            "dropdown",
+            "card",
+            "container",
+            "footer",
+            "icon",
+            "iconbutton",
+            "search",
+            "link",
+            "carousel",
+            "list",
+            "listitem",
+            "tabs",
+            "bottomnav",
+            "map",
+            "progress",
+            "timeline",
+            "chart",
+            "table",
+            "rating",
+            "price",
+            "badge",
+            "toggle",
+            "slider"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "bbox": {
+          "$ref": "#/$defs/BBox"
+        },
+        "props": {
+          "$ref": "#/$defs/Props",
+          "default": {
+            "text": null,
+            "placeholder": null,
+            "src": null,
+            "alt": null,
+            "ariaLabel": null,
+            "level": null,
+            "options": null,
+            "checked": null,
+            "icon": null,
+            "value": null,
+            "variant": null
+          }
+        },
+        "layout": {
+          "anyOf": [
+            {
+              "enum": [
+                "row",
+                "column",
+                "grid"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layout"
+        },
+        "children": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Component"
+          },
+          "title": "Children",
+          "type": "array"
+        },
+        "styleHints": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleHints"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "form": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Form"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "bbox"
+      ],
+      "title": "Component",
+      "type": "object"
+    },
+    "Form": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/FormField"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "fields"
+      ],
+      "title": "Form",
+      "type": "object"
+    },
+    "FormField": {
+      "additionalProperties": false,
+      "description": "One field of a form, used to generate the backend (F4).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "email",
+            "password",
+            "number",
+            "textarea",
+            "checkbox",
+            "select",
+            "date"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "componentId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Componentid"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "FormField",
+      "type": "object"
+    },
+    "Link": {
+      "additionalProperties": false,
+      "description": "A drawn arrow (F2): clicking `fromComponent` on `fromScreen` opens `toScreen`.",
+      "properties": {
+        "fromScreen": {
+          "title": "Fromscreen",
+          "type": "string"
+        },
+        "fromComponent": {
+          "title": "Fromcomponent",
+          "type": "string"
+        },
+        "toScreen": {
+          "title": "Toscreen",
+          "type": "string"
+        },
+        "trigger": {
+          "const": "click",
+          "default": "click",
+          "title": "Trigger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fromScreen",
+        "fromComponent",
+        "toScreen"
+      ],
+      "title": "Link",
+      "type": "object"
+    },
+    "Props": {
+      "additionalProperties": false,
+      "description": "Content and accessibility details. Each type uses only the props it needs.",
+      "properties": {
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "placeholder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placeholder"
+        },
+        "src": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Src"
+        },
+        "alt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alt"
+        },
+        "ariaLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arialabel"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "maximum": 6,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "options": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Options"
+        },
+        "checked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checked"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "variant": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variant"
+        }
+      },
+      "title": "Props",
+      "type": "object"
+    },
+    "Screen": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "root": {
+          "$ref": "#/$defs/Component"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "root"
+      ],
+      "title": "Screen",
+      "type": "object"
+    },
+    "StyleHints": {
+      "additionalProperties": false,
+      "description": "Handwritten notes (F3): raw OCR text, plus the styles the LLM resolved them to.",
+      "properties": {
+        "notes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "styles": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Styles",
+          "type": "object"
+        }
+      },
+      "title": "StyleHints",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The whole sketch: one or more screens and the links between them.",
+  "properties": {
+    "schemaVersion": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "screens": {
+      "items": {
+        "$ref": "#/$defs/Screen"
+      },
+      "minItems": 1,
+      "title": "Screens",
+      "type": "array"
+    },
+    "links": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Link"
+      },
+      "title": "Links",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "screens"
+  ],
+  "title": "Sketch2UI component tree v2",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

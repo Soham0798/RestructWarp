@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.services.auth_service import ensure_dev_account
-from app.routers import auth, generate, dashboard, admin, deploy
+from app import models  # noqa: F401  (registers every table before create_all)
+from app.routers import auth, generate, dashboard, admin, deploy, projects, sketch, sketch_import
 from app.middleware.logger import log_requests
 
 app = FastAPI(title="Restruct Warp")
@@ -22,6 +23,10 @@ app.include_router(generate.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)
 app.include_router(deploy.router)
+# Sketch Studio (merged from Sketch2UI): photo of a hand-drawn UI -> pages and exports
+app.include_router(projects.router)
+app.include_router(sketch.router)
+app.include_router(sketch_import.router)
 
 @app.on_event("startup")
 async def startup():

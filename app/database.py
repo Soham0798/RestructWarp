@@ -38,3 +38,9 @@ engine = create_async_engine(
 )
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
+
+
+async def get_db():
+    """FastAPI dependency: one database session per request, closed afterwards."""
+    async with AsyncSessionLocal() as session:
+        yield session

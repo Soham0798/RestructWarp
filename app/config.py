@@ -20,4 +20,15 @@ class Settings(BaseSettings):
     DEV_ACCOUNT_EMAIL: str = ""
     DEV_ACCOUNT_PASSWORD: str = ""
 
+    # --- Sketch Studio (merged from Sketch2UI) ---
+    # Text LLM for tidying a detected sketch and fixing accessibility problems: any
+    # OpenAI-compatible server. Left unset, LLM_API_KEY falls back to GROQ_API_KEY.
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_API_KEY: str | None = None
+    LLM_CODE_MODEL: str = "openai/gpt-oss-120b"
+    LLM_VISION_MODEL: str = ""   # optional OpenAI-compatible vision model; Claude reads sketches by default
+    # Only used when the optional detector is installed (requirements-vision.txt)
+    OCR_MODEL: str = "PP-OCRv6_medium"
+    OCR_ENGINE: str = "onnxruntime"
+
 settings = Settings()

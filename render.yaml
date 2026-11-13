@@ -5,7 +5,8 @@ services:
     name: restruct-warp-api
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    # the a11y step installs the accessibility checker (axe-core); the app still runs if Node is missing
+    buildCommand: pip install -r requirements.txt && (cd a11y && npm install --omit=dev || echo "a11y checker not installed")
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     envVars:
