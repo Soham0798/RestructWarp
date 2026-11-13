@@ -14,3 +14,4 @@ pydantic[email]
 python-multipart
 anthropic>=2.8.0
 asyncpg
+openai
