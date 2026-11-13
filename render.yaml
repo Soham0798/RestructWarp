@@ -27,3 +27,7 @@ services:
         sync: false
       - key: VERCEL_TOKEN
         sync: false
+      - key: DEV_ACCOUNT_EMAIL      # optional developer login (unlimited credits)
+        sync: false
+      - key: DEV_ACCOUNT_PASSWORD
+        sync: false

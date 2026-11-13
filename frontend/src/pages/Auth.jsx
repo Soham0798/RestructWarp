@@ -281,15 +281,18 @@ const Auth = () => {
                                 {isRegistering ? 'Sign In' : 'Sign Up'}
                             </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={loginAsDev}
-                            className="btn-secondary"
-                            style={{ padding: '8px', fontSize: '0.85rem' }}
-                        >
-                            <Bot size={14} style={{ marginRight: '6px' }} />
-                            Use Developer Account
-                        </button>
+                        {/* One-click dev login uses a local-only test account, so it is hidden on the hosted site */}
+                        {import.meta.env.DEV && (
+                            <button
+                                type="button"
+                                onClick={loginAsDev}
+                                className="btn-secondary"
+                                style={{ padding: '8px', fontSize: '0.85rem' }}
+                            >
+                                <Bot size={14} style={{ marginRight: '6px' }} />
+                                Use Developer Account
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

@@ -15,5 +15,9 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: str = ""
     VERCEL_TOKEN: str = ""      # enables the Deploy button (vercel.com/account/tokens)
     VERCEL_TEAM_ID: str = ""    # optional: deploy into a team instead of the token's personal account
+    # Optional: creates/updates a developer account (unlimited credits) at startup.
+    # Set both on the host; never commit real values.
+    DEV_ACCOUNT_EMAIL: str = ""
+    DEV_ACCOUNT_PASSWORD: str = ""
 
 settings = Settings()
