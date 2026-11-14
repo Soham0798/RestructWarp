@@ -35,22 +35,14 @@ def blank_document(name: str) -> UIDocument:
 
 async def describe(image: bytes, media_type: str, detected: UIDocument) -> Optional[UIDocument]:
     """Sketch photo -> UIDocument, or None if Claude is not configured or the reply can't be used."""
-    client = anthropic_service.client
-    if client is None:
+    if not anthropic_service.is_anthropic_configured():
         return None
     try:
-        async with client.messages.stream(
-            model=anthropic_service.MODEL,
-            max_tokens=MAX_TOKENS,
-            output_config={"effort": "low"},
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type,
-                                             "data": base64.standard_b64encode(image).decode()}},
-                {"type": "text", "text": vision_ai.PROMPT + ARROWS},
-            ]}],
-        ) as stream:
-            message = await stream.get_final_message()
-        text = "".join(b.text for b in message.content if b.type == "text")
+        text = await anthropic_service.complete([{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                         "data": base64.standard_b64encode(image).decode()}},
+            {"type": "text", "text": vision_ai.PROMPT + ARROWS},
+        ]}], max_tokens=MAX_TOKENS)
         reply = llm_service.extract_json(text)
     except Exception as e:  # network, rate limit, refusal, bad JSON: the caller falls back
         log.warning("Claude could not read the sketch: %s", str(e)[:200])

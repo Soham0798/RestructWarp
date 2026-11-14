@@ -287,7 +287,7 @@ def _links(detected: UIDocument, screens: list[dict]) -> list[dict]:
 
 
 async def describe(image: bytes, detected: UIDocument, client: Optional[AsyncOpenAI] = None) -> Optional[UIDocument]:
-    if client is None and not (llm_service.is_configured() and settings.LLM_VISION_MODEL):
+    if client is None and not (llm_service.fallback_configured() and settings.LLM_VISION_MODEL):
         return None
     client = client or llm_service.make_client()
     url = "data:image/jpeg;base64," + base64.b64encode(image).decode()

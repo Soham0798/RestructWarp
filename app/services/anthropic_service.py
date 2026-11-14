@@ -75,6 +75,31 @@ async def _anthropic_stream(system: str, user: str) -> AsyncGenerator[str, None]
         yield f"<!-- Error: {e} -->"
 
 
+async def complete(messages: list[dict], system: str | None = None, max_tokens: int = 32000,
+                   effort: str = "low") -> str:
+    """Sends a whole conversation to Claude and returns the reply text.
+
+    Raises RuntimeError if Claude is not configured or declines; API errors propagate.
+    """
+    if client is None:
+        raise RuntimeError("Anthropic API key not configured")
+    extra = {"system": system} if system else {}
+    async with client.beta.messages.stream(
+        model=MODEL,
+        max_tokens=max_tokens,
+        messages=messages,
+        thinking={"type": "adaptive"},
+        output_config={"effort": effort},
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        **extra,
+    ) as stream:
+        final = await stream.get_final_message()
+    if final.stop_reason == "refusal":
+        raise RuntimeError("Claude declined this request")
+    return "".join(block.text for block in final.content if block.type == "text")
+
+
 async def _skip_preamble(chunks: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
     """Drops any text the model writes before the HTML document starts."""
     preamble_done = False

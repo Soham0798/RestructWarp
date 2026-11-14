@@ -1,16 +1,23 @@
-"""One door to the LLM (Step 24): any OpenAI-compatible server, chosen in .env.
+"""One door to the LLM (Step 24).
 
-Groq (free tier):  LLM_BASE_URL=https://api.groq.com/openai/v1  + LLM_API_KEY
-Ollama (local):    LLM_BASE_URL=http://localhost:11434/v1        (key can be anything)
+Primary: Claude (Restruct Warp's main engine), when ANTHROPIC_API_KEY is set.
+Fallback: any OpenAI-compatible server, chosen in .env:
+  Groq (free tier):  LLM_BASE_URL=https://api.groq.com/openai/v1  + LLM_API_KEY
+  Ollama (local):    LLM_BASE_URL=http://localhost:11434/v1        (key can be anything)
 """
 import json
 import re
 from typing import Optional
 
+import logging
+
 import httpx
 from openai import APIError, AsyncOpenAI, BadRequestError
 
 from app.config import settings
+from app.services import anthropic_service
+
+log = logging.getLogger(__name__)
 
 
 class LLMUnavailable(RuntimeError):
@@ -24,9 +31,21 @@ def api_key() -> str:
     return settings.GROQ_API_KEY if "groq.com" in settings.LLM_BASE_URL else ""
 
 
-def is_configured() -> bool:
+def fallback_configured() -> bool:
+    """Is the OpenAI-compatible server (Groq / Ollama) usable?"""
     local = "localhost" in settings.LLM_BASE_URL or "127.0.0.1" in settings.LLM_BASE_URL
     return bool(api_key()) or local
+
+
+def is_configured() -> bool:
+    return anthropic_service.is_anthropic_configured() or fallback_configured()
+
+
+async def _claude_chat(messages: list[dict]) -> str:
+    """OpenAI-style messages -> Claude: system messages become the system prompt."""
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    turns = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] != "system"]
+    return await anthropic_service.complete(turns, system=system or None)
 
 
 def make_client(http_client: Optional[httpx.AsyncClient] = None) -> AsyncOpenAI:
@@ -36,8 +55,16 @@ def make_client(http_client: Optional[httpx.AsyncClient] = None) -> AsyncOpenAI:
 
 async def chat(messages: list[dict], model: Optional[str] = None, json_mode: bool = False,
                client: Optional[AsyncOpenAI] = None) -> str:
-    if client is None and not is_configured():
-        raise LLMUnavailable("Set LLM_API_KEY (Groq) or point LLM_BASE_URL at Ollama")
+    # a client passed in (tests, scripts) or an explicit model means "use the OpenAI-compatible server"
+    if client is None and model is None and anthropic_service.is_anthropic_configured():
+        try:
+            return await _claude_chat(messages)
+        except Exception as e:
+            if not fallback_configured():
+                raise LLMUnavailable(str(e)) from e
+            log.warning("Claude failed, falling back to %s: %s", settings.LLM_BASE_URL, str(e)[:200])
+    if client is None and not fallback_configured():
+        raise LLMUnavailable("Set ANTHROPIC_API_KEY, or LLM_API_KEY (Groq), or point LLM_BASE_URL at Ollama")
     client = client or make_client()
     kwargs = {"response_format": {"type": "json_object"}} if json_mode else {}
     model = model or settings.LLM_CODE_MODEL
