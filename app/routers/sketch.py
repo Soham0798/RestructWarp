@@ -15,8 +15,8 @@ from app.routers.projects import owned_project
 from app.schemas.component_schema import UIDocument
 from app.schemas.sketch_schema import AnalyzeOut, GenerateOut
 from app.security.deps import get_current_user
-from app.services import (a11y_service, codegen_service, fullstack_service, react_export, refine_service,
-                          sketch_reader, vision_ai)
+from app.services import (a11y_service, codegen_service, design_service, fullstack_service, react_export,
+                          refine_service, sketch_reader, vision_ai)
 
 router = APIRouter(tags=["sketch"])
 
@@ -113,11 +113,25 @@ async def save_document(sketch_id: int, doc: UIDocument, user: User = Depends(ge
 
 
 @router.post("/sketch/{sketch_id}/generate", response_model=GenerateOut)
-async def generate(sketch_id: int, request: Request, user: User = Depends(get_current_user),
-                   db: AsyncSession = Depends(get_db)):
+async def generate(sketch_id: int, request: Request, fresh: bool = Query(False),
+                   user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Pages for a sketch. They are designed once and stored; `fresh=true` asks for a new design."""
     sketch = await owned_sketch(sketch_id, user, db)
     doc = UIDocument.model_validate_json(await get_document_json(sketch))
+    preview_url = str(request.url_for("preview", token=sketch.preview_token, page="index.html"))
+    if sketch.code_html and not fresh:  # reopening a sketch must not redesign it
+        b, a = sketch.a11y_before, sketch.a11y_after
+        return GenerateOut(sketch_id=sketch.id, pages=json.loads(sketch.code_html), a11y_before=b, a11y_after=a,
+                           a11y_fixed_by="unavailable" if a is None else "none" if a == b else "llm",
+                           preview_url=preview_url)
+
     pages, before, after, how = codegen_service.render_site(doc), [], [], "none"
+    # the template pages are correct but generic: Claude designs the real ones from the sketch
+    image = UPLOADS / sketch.image_path
+    designed = await design_service.design_site(
+        doc, pages, image.read_bytes() if image.is_file() else None,
+        next((kind for kind, ext in ALLOWED.items() if ext == image.suffix), "image/png"))
+    pages = designed or pages
     try:
         for name, html in pages.items():
             result = await a11y_service.improve(html)
@@ -132,8 +146,7 @@ async def generate(sketch_id: int, request: Request, user: User = Depends(get_cu
     sketch.a11y_after = min(after) if after else None
     await db.commit()
     return GenerateOut(sketch_id=sketch.id, pages=pages, a11y_before=sketch.a11y_before,
-                       a11y_after=sketch.a11y_after, a11y_fixed_by=how,
-                       preview_url=str(request.url_for("preview", token=sketch.preview_token, page="index.html")))
+                       a11y_after=sketch.a11y_after, a11y_fixed_by=how, preview_url=preview_url)
 
 
 async def get_document_json(sketch: Sketch) -> str:

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     PenTool, Upload, Camera, Eye, Code2, Braces, GitBranch, ShieldCheck, Smartphone,
-    Download, Monitor, Tablet, Plus, Loader2, Save, Layers, Link2, LayoutGrid, Check, X
+    Download, Monitor, Tablet, Plus, Loader2, Save, Layers, Link2, LayoutGrid, Check, X, RefreshCw
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { CopyButton } from '../components/GenerationUtils';
@@ -300,6 +300,11 @@ const SketchStudio = () => {
         URL.revokeObjectURL(url);
     });
 
+    const redesign = () => run('Designing the pages again…', async () => {
+        setResult(await request(`/sketch/${sketchId}/generate?fresh=true`, { method: 'POST' }));
+        setSaved(null);
+    });
+
     const saveToHistory = () => run('Saving to history…', async () => {
         const out = await request('/generate/import', {
             method: 'POST', json: { name: doc.name, html: result.pages['index.html'], document: doc },
@@ -385,7 +390,7 @@ const SketchStudio = () => {
                     {busy && (
                         <p role="status" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#c084fc' }}>
                             <Loader2 size={16} className="animate-spin" />
-                            {busy === ANALYZING ? 'Reading your sketch and writing the pages… this can take up to a minute.' : busy}
+                            {busy === ANALYZING ? 'Reading your sketch and designing the pages… this can take a minute or two.' : busy}
                         </p>
                     )}
                     {saved && (
@@ -430,6 +435,13 @@ const SketchStudio = () => {
                                     })}
                                 </div>
                                 <div style={{ marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                    {result && (
+                                        <button type="button" className="btn-secondary" disabled={!!busy} onClick={redesign}
+                                            title="Ask Claude for a new design of these pages"
+                                            style={{ padding: '7px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                                            <RefreshCw size={12} /> Redesign
+                                        </button>
+                                    )}
                                     {EXPORTS.map(([target, text]) => (
                                         <button type="button" key={target} className="btn-secondary" disabled={!!busy} onClick={() => download(target)}
                                             style={{ padding: '7px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
